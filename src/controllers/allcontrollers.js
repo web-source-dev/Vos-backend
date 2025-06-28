@@ -1305,11 +1305,14 @@ exports.savePaperworkByCaseId = async (req, res) => {
     const { caseId } = req.params;
     const paperworkData = req.body;
 
-    console.log('savePaperworkByCaseId called with caseId:', caseId);
-    console.log('User making request:', req.user.id, req.user.role);
+    console.log('=== savePaperworkByCaseId START ===');
+    console.log('caseId:', caseId);
+    console.log('User:', req.user.id, req.user.role);
+    console.log('paperworkData:', JSON.stringify(paperworkData, null, 2));
 
     // Validate caseId format
     if (!caseId || caseId.length !== 24) {
+      console.log('Invalid case ID format:', caseId);
       return res.status(400).json({
         success: false,
         error: 'Invalid case ID format'
@@ -1325,25 +1328,36 @@ exports.savePaperworkByCaseId = async (req, res) => {
     console.log('Case lookup result:', caseData ? 'Found' : 'Not found');
     
     if (!caseData) {
+      console.log('Case not found for ID:', caseId);
       return res.status(404).json({
         success: false,
         error: 'Case not found'
       });
     }
 
-    console.log('Case data:', {
+    console.log('Case data found:', {
       id: caseData._id,
       customer: caseData.customer ? caseData.customer._id : null,
       vehicle: caseData.vehicle ? caseData.vehicle._id : null,
       quote: caseData.quote ? caseData.quote._id : null
     });
 
+    // Validate that we have vehicle data
+    if (!caseData.vehicle) {
+      console.log('No vehicle found in case');
+      return res.status(400).json({
+        success: false,
+        error: 'No vehicle found in case'
+      });
+    }
+
+    // Get vehicle ID (handle both populated and unpopulated cases)
+    const vehicleId = caseData.vehicle._id || caseData.vehicle;
+    console.log('Vehicle ID:', vehicleId);
+
     // Process document uploads if any files were uploaded
     const documents = {};
     if (paperworkData.documentsUploaded) {
-      // Use the actual document paths from the uploaded files
-      // For now, we'll use placeholder paths, but in a real implementation,
-      // you'd store the actual file paths from the upload response
       documents.idRescan = paperworkData.documentsUploaded.idRescan ? '/uploads/documents/id-rescan.jpg' : null;
       documents.signedBillOfSale = paperworkData.documentsUploaded.signedBillOfSale ? '/uploads/documents/signed-bill-of-sale.pdf' : null;
       documents.titlePhoto = paperworkData.documentsUploaded.titlePhoto ? '/uploads/documents/title-photo.jpg' : null;
@@ -1361,6 +1375,8 @@ exports.savePaperworkByCaseId = async (req, res) => {
       });
     }
 
+    console.log('Documents processed:', documents);
+
     // Update vehicle information in the vehicle database first
     const vehicleUpdateData = {
       color: paperworkData.billOfSale?.vehicleColor || caseData.vehicle?.color,
@@ -1372,14 +1388,28 @@ exports.savePaperworkByCaseId = async (req, res) => {
       knownDefects: paperworkData.billOfSale?.knownDefects || caseData.vehicle?.knownDefects,
     };
 
+    console.log('Vehicle update data:', vehicleUpdateData);
+
     // Update the vehicle record
     const updatedVehicle = await Vehicle.findByIdAndUpdate(
-      caseData.vehicle._id,
+      vehicleId,
       vehicleUpdateData,
       { new: true }
     );
 
-    console.log('Vehicle updated with paperwork data:', updatedVehicle._id);
+    if (!updatedVehicle) {
+      console.log('Failed to update vehicle');
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update vehicle'
+      });
+    }
+
+    console.log('Vehicle updated successfully:', updatedVehicle._id);
+
+    // Get customer ID (handle both populated and unpopulated cases)
+    const customerId = caseData.customer._id || caseData.customer;
+    const quoteId = caseData.quote?._id || caseData.quote;
 
     // Create or update transaction record with paperwork data
     let transaction;
@@ -1453,9 +1483,9 @@ exports.savePaperworkByCaseId = async (req, res) => {
       if (!transaction) {
         console.log('Transaction not found, creating new transaction');
         transaction = await Transaction.create({
-          vehicle: caseData.vehicle._id,
-          customer: caseData.customer._id,
-          quote: caseData.quote?._id,
+          vehicle: vehicleId,
+          customer: customerId,
+          quote: quoteId,
           billOfSale: {
             sellerName: paperworkData.billOfSale?.sellerName || '',
             sellerAddress: paperworkData.billOfSale?.sellerAddress || '',
@@ -1518,9 +1548,9 @@ exports.savePaperworkByCaseId = async (req, res) => {
       console.log('Creating new transaction');
       // Create new transaction
       transaction = await Transaction.create({
-        vehicle: caseData.vehicle._id,
-        customer: caseData.customer._id,
-        quote: caseData.quote?._id,
+        vehicle: vehicleId,
+        customer: customerId,
+        quote: quoteId,
         billOfSale: {
           sellerName: paperworkData.billOfSale?.sellerName || '',
           sellerAddress: paperworkData.billOfSale?.sellerAddress || '',
@@ -1580,7 +1610,15 @@ exports.savePaperworkByCaseId = async (req, res) => {
       });
     }
 
-    console.log('Transaction created/updated:', transaction._id);
+    if (!transaction) {
+      console.log('Failed to create/update transaction');
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create/update transaction'
+      });
+    }
+
+    console.log('Transaction created/updated successfully:', transaction._id);
 
     // Update case with transaction reference and stage status
     const updatedCase = await Case.findByIdAndUpdate(
@@ -1598,7 +1636,17 @@ exports.savePaperworkByCaseId = async (req, res) => {
      .populate('quote')
      .populate('transaction');
 
+    if (!updatedCase) {
+      console.log('Failed to update case');
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update case'
+      });
+    }
+
     console.log('Case updated successfully');
+
+    console.log('=== savePaperworkByCaseId SUCCESS ===');
 
     res.status(200).json({
       success: true,
@@ -1608,6 +1656,7 @@ exports.savePaperworkByCaseId = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('=== savePaperworkByCaseId ERROR ===');
     console.error('Error saving paperwork by case ID:', error);
     console.error('Error stack:', error.stack);
     res.status(500).json({
@@ -2137,4 +2186,3 @@ exports.saveCompletionData = async (req, res) => {
   }
 };
 
-                        

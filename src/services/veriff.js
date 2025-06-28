@@ -26,9 +26,12 @@ class VeriffService {
         throw new Error('Veriff API credentials not configured');
       }
 
+      // Use production backend URL for callback
+      const backendUrl = process.env.BASE_URL || 'https://vos-backend-bh76.onrender.com';
+      
       const payload = {
         verification: {
-          callback: `${process.env.BASE_URL || 'http://localhost:5000'}/api/veriff/webhook`,
+          callback: `${backendUrl}/api/veriff/webhook`,
           person: {
             givenName: customerData.firstName,
             lastName: customerData.lastName,
@@ -51,12 +54,13 @@ class VeriffService {
         }
       });
 
-      // Send verification email to customer
+      // Send verification email to customer using production frontend URL
       try {
+        const frontendUrl = process.env.FRONTEND_URL || 'https://vos.rtnglobal.co';
         await emailService.sendVeriffVerificationEmail(
           customerData,
           response.data.verification.url,
-          process.env.BASE_URL || 'http://localhost:5000'
+          frontendUrl
         );
         console.log('Veriff verification email sent to customer');
       } catch (emailError) {

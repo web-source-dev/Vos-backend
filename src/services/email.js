@@ -551,4 +551,109 @@ exports.sendDecisionEmail = async (customer, vehicle, quote, baseUrl) => {
     console.error('Error sending decision email:', error);
     throw error;
   }
+};
+
+/**
+ * Send Veriff verification email to customer
+ * @param {Object} customerData - The customer data
+ * @param {String} verificationUrl - The Veriff verification URL
+ * @param {String} baseUrl - The base URL for the application
+ * @returns {Promise} - Promise resolving to the email info
+ */
+exports.sendVeriffVerificationEmail = async (customerData, verificationUrl, baseUrl) => {
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || '"VOS System" <no-reply@vossystem.com>',
+    to: customerData.email1 || customerData.email || 'customer@example.com',
+    subject: 'Complete Your ID Verification - VOS Vehicle Purchase',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #2563eb; margin: 0;">VOS Vehicle Purchase</h1>
+          <p style="color: #6b7280; margin: 10px 0 0 0;">Secure ID Verification Required</p>
+        </div>
+        
+        <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+          <h2 style="color: #1f2937; margin: 0 0 15px 0;">Hello ${customerData.firstName || 'there'},</h2>
+          
+          <p style="color: #374151; line-height: 1.6; margin: 0 0 15px 0;">
+            Thank you for choosing VOS for your vehicle purchase. To complete your transaction securely, 
+            we need to verify your identity using our trusted verification partner, Veriff.
+          </p>
+          
+          <p style="color: #374151; line-height: 1.6; margin: 0 0 20px 0;">
+            This verification process is quick, secure, and helps protect both you and us from fraud.
+          </p>
+        </div>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${verificationUrl}" 
+             style="background: #2563eb; color: white; padding: 15px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+            Complete ID Verification
+          </a>
+        </div>
+        
+        <div style="background: #fef3c7; padding: 15px; border-radius: 6px; margin: 20px 0;">
+          <h3 style="color: #92400e; margin: 0 0 10px 0;">What you'll need:</h3>
+          <ul style="color: #92400e; margin: 0; padding-left: 20px;">
+            <li>Your government-issued photo ID (driver's license, passport, etc.)</li>
+            <li>A smartphone or computer with a camera</li>
+            <li>Good lighting for clear photos</li>
+            <li>About 2-3 minutes of your time</li>
+          </ul>
+        </div>
+        
+        <div style="background: #ecfdf5; padding: 15px; border-radius: 6px; margin: 20px 0;">
+          <h3 style="color: #065f46; margin: 0 0 10px 0;">Security & Privacy:</h3>
+          <ul style="color: #065f46; margin: 0; padding-left: 20px;">
+            <li>Your data is encrypted and secure</li>
+            <li>Veriff is a trusted, global verification provider</li>
+            <li>We only use this information for your transaction</li>
+            <li>Your privacy is protected under our privacy policy</li>
+          </ul>
+        </div>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <p style="color: #6b7280; font-size: 14px; margin: 0;">
+            If you have any questions or need assistance, please contact us at 
+            <a href="mailto:support@vossystem.com" style="color: #2563eb;">support@vossystem.com</a>
+          </p>
+        </div>
+        
+        <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; text-align: center;">
+          <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+            This verification link will expire in 24 hours for security reasons.
+          </p>
+        </div>
+      </div>
+    `
+  };
+
+  try {
+    // For development, create a test account if needed
+    if (process.env.NODE_ENV !== 'production' && 
+        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
+      const testAccount = await nodemailer.createTestAccount();
+      transporter = nodemailer.createTransport({
+        host: 'smtp.ethereal.email',
+        port: 587,
+        secure: false,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass,
+        },
+      });
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    
+    // In development, log the Ethereal URL to view the email
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Veriff Verification Email URL: %s', nodemailer.getTestMessageUrl(info));
+    }
+    
+    return info;
+  } catch (error) {
+    console.error('Error sending Veriff verification email:', error);
+    throw error;
+  }
 }; 

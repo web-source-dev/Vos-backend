@@ -4,7 +4,7 @@ const { protect } = require('../middleware/auth');
 
 const router = express.Router();
 
-// All routes are now protected
+// Registration should be public (no protection needed)
 router.post('/register', register);
 router.post('/login', login); // Keep login public
 router.get('/verify', protect, verify);

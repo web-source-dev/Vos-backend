@@ -35,7 +35,10 @@ const {
   getInspectorInspections,
   sendCustomerEmail,
   getVehiclePricing,
-  getAnalytics
+  getAnalytics,
+  createVeriffSession,
+  getVeriffSessionStatus,
+  veriffWebhook
 } = require('../controllers/allcontrollers');
 
 // Auth routes
@@ -61,6 +64,11 @@ router.get('/cases/:caseId/pdf', generateCaseFile);
 router.get('/cases/:caseId/bill-of-sale', generateBillOfSalePDF);
 router.put('/cases/:caseId/status', protect, updateCaseStatus);
 router.post('/cases/:caseId/completion', protect, saveCompletionData);
+
+// Veriff ID verification routes
+router.post('/cases/:caseId/veriff-session', protect, createVeriffSession);
+router.get('/cases/:caseId/veriff-status', protect, getVeriffSessionStatus);
+router.post('/veriff/webhook', veriffWebhook); // No auth required for webhook
 
 // Quote management routes (protected)
 router.put('/cases/:caseId/quote', protect, isQuoteManager, updateQuoteByCaseId);

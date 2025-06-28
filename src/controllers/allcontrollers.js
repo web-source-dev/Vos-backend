@@ -6,6 +6,7 @@ const Quote = require('../models/Quote');
 const Transaction = require('../models/Transaction');
 const emailService = require('../services/email');
 const pdfService = require('../services/pdf');
+const veriffService = require('../services/veriff');
 const User = require('../models/User');
 const path = require('path');
 const fs = require('fs').promises;
@@ -1121,13 +1122,22 @@ exports.createUser = async (req, res) => {
 exports.updateUser = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { firstName, lastName, role, location } = req.body;
+    const { firstName, lastName, email, role, location } = req.body;
 
     // Validate required fields
-    if (!firstName || !lastName || !role) {
+    if (!firstName || !lastName || !email || !role) {
       return res.status(400).json({
         success: false,
-        error: 'FirstName, lastName, and role are required'
+        error: 'FirstName, lastName, email, and role are required'
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please provide a valid email address'
       });
     }
 
@@ -1149,6 +1159,15 @@ exports.updateUser = async (req, res) => {
       });
     }
 
+    // Check if email is already taken by another user
+    const existingUser = await User.findOne({ email, _id: { $ne: userId } });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email is already taken by another user'
+      });
+    }
+
     // Prevent admin from changing their own role to non-admin
     if (user._id.toString() === req.user.id && role !== 'admin') {
       return res.status(400).json({
@@ -1163,6 +1182,7 @@ exports.updateUser = async (req, res) => {
       {
         firstName,
         lastName,
+        email,
         role,
         location
       },
@@ -2569,6 +2589,192 @@ exports.getAnalytics = async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching analytics:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Veriff ID Verification Controllers
+
+// Create Veriff verification session
+exports.createVeriffSession = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+
+    // Validate caseId parameter
+    if (!caseId || caseId === 'undefined' || caseId === 'null') {
+      return res.status(400).json({
+        success: false,
+        error: 'Valid case ID is required'
+      });
+    }
+
+    // Validate caseId format (should be a valid MongoDB ObjectId)
+    if (!caseId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid case ID format'
+      });
+    }
+
+    // Get case data with customer information
+    const caseData = await Case.findById(caseId)
+      .populate('customer')
+      .populate('vehicle');
+
+    if (!caseData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
+
+    // Check if customer data exists
+    if (!caseData.customer) {
+      return res.status(400).json({
+        success: false,
+        error: 'Customer data not found for this case'
+      });
+    }
+
+    // Create Veriff session
+    const veriffResult = await veriffService.createSession(caseData.customer, caseId);
+
+    if (!veriffResult.success) {
+      return res.status(500).json({
+        success: false,
+        error: veriffResult.error || 'Failed to create Veriff session'
+      });
+    }
+
+    // Update case with Veriff session information
+    await Case.findByIdAndUpdate(caseId, {
+      'veriffSession': {
+        sessionId: veriffResult.data.sessionId,
+        status: 'created',
+        createdAt: new Date()
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        sessionId: veriffResult.data.sessionId,
+        verificationUrl: veriffResult.data.verificationUrl,
+        message: 'Veriff session created successfully. Email will be sent to customer.'
+      }
+    });
+  } catch (error) {
+    console.error('Error creating Veriff session:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+};
+
+// Get Veriff session status
+exports.getVeriffSessionStatus = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+
+    const caseData = await Case.findById(caseId);
+    if (!caseData || !caseData.veriffSession) {
+      return res.status(404).json({
+        success: false,
+        error: 'Veriff session not found'
+      });
+    }
+
+    // Get latest status from Veriff
+    const veriffResult = await veriffService.getSessionDecision(caseData.veriffSession.sessionId);
+
+    if (veriffResult.success) {
+      // Update case with latest status
+      await Case.findByIdAndUpdate(caseId, {
+        'veriffSession.status': veriffResult.data.verification?.status || 'unknown',
+        'veriffSession.lastChecked': new Date()
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          sessionId: caseData.veriffSession.sessionId,
+          status: veriffResult.data.verification?.status || 'unknown',
+          decision: veriffResult.data.verification?.decision,
+          person: veriffResult.data.verification?.person
+        }
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: veriffResult.error || 'Failed to get Veriff session status'
+      });
+    }
+  } catch (error) {
+    console.error('Error getting Veriff session status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Veriff webhook handler
+exports.veriffWebhook = async (req, res) => {
+  try {
+    const signature = req.headers['x-hmac-signature'];
+    const payload = req.body;
+
+    // Verify webhook signature
+    if (!veriffService.verifyWebhookSignature(payload, signature)) {
+      console.error('Invalid Veriff webhook signature');
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid signature'
+      });
+    }
+
+    // Process webhook data
+    const webhookData = veriffService.processWebhookData(payload);
+    
+    if (!webhookData.success) {
+      console.error('Error processing webhook data:', webhookData.error);
+      return res.status(400).json({
+        success: false,
+        error: webhookData.error
+      });
+    }
+
+    const { sessionId, status, decision, vendorData: caseId } = webhookData.data;
+
+    // Update case with verification result
+    if (caseId) {
+      const updateData = {
+        'veriffSession.status': status,
+        'veriffSession.decision': decision,
+        'veriffSession.verifiedAt': new Date()
+      };
+
+      // If verification is approved, mark ID rescan as verified
+      if (status === 'approved' && decision === 'approved') {
+        updateData['veriffSession.verified'] = true;
+        updateData['veriffSession.verificationData'] = webhookData.data;
+      }
+
+      await Case.findByIdAndUpdate(caseId, updateData);
+
+      console.log(`Veriff verification ${status} for case ${caseId}`);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Webhook processed successfully'
+    });
+  } catch (error) {
+    console.error('Error processing Veriff webhook:', error);
     res.status(500).json({
       success: false,
       error: error.message

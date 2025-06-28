@@ -25,19 +25,27 @@ const {
   getCase,
   getCurrentUser,
   getUsersByRole,
+  createUser,
+  updateUser,
+  deleteUser,
+  getAllUsers,
   uploadDocument,
   savePaperworkByCaseId,
   saveCompletionData,
   getInspectorInspections,
   sendCustomerEmail,
-  getVehiclePricing
+  getVehiclePricing,
+  getAnalytics
 } = require('../controllers/allcontrollers');
 
 // Auth routes
 router.get('/auth/me', protect, getCurrentUser);
 
 // User management routes
-router.get('/users', protect, getUsersByRole);
+router.get('/users', protect, isAdmin, getUsersByRole);
+router.post('/users', protect, isAdmin, createUser);
+router.put('/users/:userId', protect, isAdmin, updateUser);
+router.delete('/users/:userId', protect, isAdmin, deleteUser);
 
 // Inspector routes
 router.get('/inspections/assigned', protect, isInspector, getInspectorInspections);
@@ -81,5 +89,8 @@ router.get('/quote/:id/pdf', generateCaseFileWithToken);
 
 // Vehicle pricing routes
 router.get('/vehicle/pricing/:vin', protect, getVehiclePricing);
+
+// Analytics routes (protected)
+router.get('/analytics', protect, isAdmin, getAnalytics);
 
 module.exports = router;

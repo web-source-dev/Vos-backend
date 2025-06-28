@@ -1038,13 +1038,199 @@ exports.getUsersByRole = async (req, res) => {
       });
     }
 
-    const users = await User.find({ role }).select('firstName lastName email location');
+    const users = await User.find({ role }).select('firstName lastName email location role createdAt');
 
     res.status(200).json({
       success: true,
       data: users
     });
   } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Create new user (admin only)
+exports.createUser = async (req, res) => {
+  try {
+    const { email, password, firstName, lastName, role, location } = req.body;
+
+    // Validate required fields
+    if (!email || !password || !firstName || !lastName || !role) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email, password, firstName, lastName, and role are required'
+      });
+    }
+
+    // Validate role
+    const validRoles = ['admin', 'agent', 'estimator', 'inspector'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid role. Must be one of: admin, agent, estimator, inspector'
+      });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email already in use'
+      });
+    }
+
+    // Create user
+    const user = await User.create({
+      email,
+      password,
+      firstName,
+      lastName,
+      role,
+      location
+    });
+
+    // Return user data without password
+    const userData = {
+      id: user._id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      location: user.location,
+      createdAt: user.createdAt
+    };
+
+    res.status(201).json({
+      success: true,
+      data: userData
+    });
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Update user (admin only)
+exports.updateUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { firstName, lastName, role, location } = req.body;
+
+    // Validate required fields
+    if (!firstName || !lastName || !role) {
+      return res.status(400).json({
+        success: false,
+        error: 'FirstName, lastName, and role are required'
+      });
+    }
+
+    // Validate role
+    const validRoles = ['admin', 'agent', 'estimator', 'inspector'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid role. Must be one of: admin, agent, estimator, inspector'
+      });
+    }
+
+    // Check if user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    // Prevent admin from changing their own role to non-admin
+    if (user._id.toString() === req.user.id && role !== 'admin') {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot change your own role from admin'
+      });
+    }
+
+    // Update user
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      {
+        firstName,
+        lastName,
+        role,
+        location
+      },
+      { new: true }
+    ).select('-password');
+
+    res.status(200).json({
+      success: true,
+      data: updatedUser
+    });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Delete user (admin only)
+exports.deleteUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Check if user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    // Prevent admin from deleting themselves
+    if (user._id.toString() === req.user.id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot delete your own account'
+      });
+    }
+
+    // Delete user
+    await User.findByIdAndDelete(userId);
+
+    res.status(200).json({
+      success: true,
+      data: {}
+    });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Get all users (admin only)
+exports.getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find({}).select('firstName lastName email location role createdAt');
+
+    res.status(200).json({
+      success: true,
+      data: users
+    });
+  } catch (error) {
+    console.error('Error fetching all users:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -2179,6 +2365,210 @@ exports.saveCompletionData = async (req, res) => {
     });
   } catch (error) {
     console.error('Error saving completion data:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Get detailed analytics for reports
+exports.getAnalytics = async (req, res) => {
+  try {
+    const { timeRange = '30d' } = req.query;
+    
+    const now = new Date();
+    let startDate;
+    
+    switch (timeRange) {
+      case '7d':
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case '30d':
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case '90d':
+        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        break;
+      case '1y':
+        startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        startDate = new Date(0); // All time
+    }
+
+    // Get cases with populated data
+    const cases = await Case.find({
+      createdAt: { $gte: startDate }
+    })
+    .populate('customer')
+    .populate('vehicle')
+    .populate('inspection')
+    .populate('quote')
+    .populate('transaction')
+    .populate('createdBy', 'firstName lastName email')
+    .sort({ createdAt: -1 });
+
+    // Calculate analytics
+    const analytics = {
+      totalCases: cases.length,
+      totalRevenue: 0,
+      avgCaseValue: 0,
+      completionRate: 0,
+      avgProcessingTime: 0,
+      avgInspectionRating: 0,
+      casesByStatus: {},
+      casesByStage: {},
+      revenueByMonth: {},
+      casesByDay: {},
+      topVehicles: {},
+      agentPerformance: {},
+      decisionBreakdown: {},
+      stageProgression: Array.from({ length: 7 }, (_, i) => ({ stage: i + 1, count: 0, avgTime: 0 }))
+    };
+
+    cases.forEach(caseData => {
+      // Calculate revenue
+      const revenue = caseData.quote?.offerDecision?.finalAmount || 
+                     caseData.quote?.offerAmount || 
+                     caseData.transaction?.billOfSale?.salePrice || 0;
+      analytics.totalRevenue += revenue;
+
+      // Cases by status
+      analytics.casesByStatus[caseData.status] = (analytics.casesByStatus[caseData.status] || 0) + 1;
+
+      // Cases by stage
+      analytics.casesByStage[`Stage ${caseData.currentStage}`] = (analytics.casesByStage[`Stage ${caseData.currentStage}`] || 0) + 1;
+
+      // Revenue by month
+      const month = new Date(caseData.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      if (!analytics.revenueByMonth[month]) {
+        analytics.revenueByMonth[month] = { revenue: 0, cases: 0 };
+      }
+      analytics.revenueByMonth[month].revenue += revenue;
+      analytics.revenueByMonth[month].cases += 1;
+
+      // Cases by day
+      const day = new Date(caseData.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      if (!analytics.casesByDay[day]) {
+        analytics.casesByDay[day] = { cases: 0, revenue: 0 };
+      }
+      analytics.casesByDay[day].cases += 1;
+      analytics.casesByDay[day].revenue += revenue;
+
+      // Top vehicles
+      if (caseData.vehicle?.make && caseData.vehicle?.model) {
+        const vehicleKey = `${caseData.vehicle.make} ${caseData.vehicle.model}`;
+        if (!analytics.topVehicles[vehicleKey]) {
+          analytics.topVehicles[vehicleKey] = { count: 0, totalValue: 0 };
+        }
+        analytics.topVehicles[vehicleKey].count += 1;
+        analytics.topVehicles[vehicleKey].totalValue += revenue;
+      }
+
+      // Agent performance
+      if (caseData.createdBy) {
+        const agentId = caseData.createdBy._id || caseData.createdBy;
+        const agentName = caseData.createdBy.firstName && caseData.createdBy.lastName 
+          ? `${caseData.createdBy.firstName} ${caseData.createdBy.lastName}`
+          : `Agent ${agentId.toString().slice(-4)}`;
+        
+        if (!analytics.agentPerformance[agentId]) {
+          analytics.agentPerformance[agentId] = { 
+            agentName, 
+            cases: 0, 
+            revenue: 0, 
+            ratings: [] 
+          };
+        }
+        analytics.agentPerformance[agentId].cases += 1;
+        analytics.agentPerformance[agentId].revenue += revenue;
+        
+        if (caseData.inspection?.overallRating) {
+          analytics.agentPerformance[agentId].ratings.push(caseData.inspection.overallRating);
+        }
+      }
+
+      // Decision breakdown
+      const decision = caseData.quote?.offerDecision?.decision || 'pending';
+      analytics.decisionBreakdown[decision] = (analytics.decisionBreakdown[decision] || 0) + 1;
+
+      // Stage progression
+      const stageIndex = caseData.currentStage - 1;
+      if (stageIndex >= 0 && stageIndex < analytics.stageProgression.length) {
+        analytics.stageProgression[stageIndex].count += 1;
+      }
+    });
+
+    // Calculate averages and percentages
+    analytics.avgCaseValue = analytics.totalCases > 0 ? analytics.totalRevenue / analytics.totalCases : 0;
+    analytics.completionRate = analytics.totalCases > 0 ? 
+      (analytics.casesByStatus.completed || 0) / analytics.totalCases * 100 : 0;
+
+    // Calculate average inspection rating
+    const allRatings = cases
+      .filter(c => c.inspection?.overallRating)
+      .map(c => c.inspection.overallRating);
+    analytics.avgInspectionRating = allRatings.length > 0 ? 
+      allRatings.reduce((sum, rating) => sum + rating, 0) / allRatings.length : 0;
+
+    // Calculate average processing time for completed cases
+    const completedCases = cases.filter(c => c.status === 'completed');
+    const processingTimes = completedCases.map(c => {
+      const created = new Date(c.createdAt);
+      const completed = new Date(c.updatedAt || c.createdAt);
+      return (completed.getTime() - created.getTime()) / (1000 * 60 * 60 * 24); // days
+    });
+    analytics.avgProcessingTime = processingTimes.length > 0 ? 
+      processingTimes.reduce((sum, time) => sum + time, 0) / processingTimes.length : 0;
+
+    // Convert objects to arrays for easier frontend consumption
+    analytics.revenueByMonth = Object.entries(analytics.revenueByMonth).map(([month, data]) => ({
+      month,
+      revenue: data.revenue,
+      cases: data.cases
+    }));
+
+    analytics.casesByDay = Object.entries(analytics.casesByDay).map(([date, data]) => ({
+      date,
+      cases: data.cases,
+      revenue: data.revenue
+    }));
+
+    analytics.topVehicles = Object.entries(analytics.topVehicles)
+      .map(([vehicle, data]) => {
+        const [make, ...modelParts] = vehicle.split(' ');
+        return {
+          make,
+          model: modelParts.join(' '),
+          count: data.count,
+          avgValue: data.totalValue / data.count
+        };
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    analytics.agentPerformance = Object.values(analytics.agentPerformance)
+      .map(agent => ({
+        ...agent,
+        avgRating: agent.ratings.length > 0 ? 
+          agent.ratings.reduce((sum, rating) => sum + rating, 0) / agent.ratings.length : 0
+      }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+
+    analytics.decisionBreakdown = Object.entries(analytics.decisionBreakdown).map(([decision, count]) => ({
+      decision: decision.charAt(0).toUpperCase() + decision.slice(1),
+      count,
+      percentage: (count / analytics.totalCases) * 100
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: analytics
+    });
+  } catch (error) {
+    console.error('Error fetching analytics:', error);
     res.status(500).json({
       success: false,
       error: error.message

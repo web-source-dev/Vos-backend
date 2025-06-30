@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect, isAdmin, isAgent, isEstimator, isInspector, isAdminOrAgent, isEstimatorDebug, isQuoteManager } = require('../middleware/auth');
+const { protect, isAdmin, isAgent, isEstimator, isInspector, isAdminOrAgent, isEstimatorDebug, isQuoteManager, isUserManager } = require('../middleware/auth');
 const {
   createCase,
   scheduleInspection,
@@ -35,17 +35,14 @@ const {
   getInspectorInspections,
   sendCustomerEmail,
   getVehiclePricing,
-  getAnalytics,
-  createVeriffSession,
-  getVeriffSessionStatus,
-  veriffWebhook
+  getAnalytics
 } = require('../controllers/allcontrollers');
 
 // Auth routes
 router.get('/auth/me', protect, getCurrentUser);
 
 // User management routes
-router.get('/users', protect, isAdmin, getUsersByRole);
+router.get('/users', protect, isUserManager, getUsersByRole);
 router.post('/users', protect, isAdmin, createUser);
 router.put('/users/:userId', protect, isAdmin, updateUser);
 router.delete('/users/:userId', protect, isAdmin, deleteUser);
@@ -64,11 +61,6 @@ router.get('/cases/:caseId/pdf', generateCaseFile);
 router.get('/cases/:caseId/bill-of-sale', generateBillOfSalePDF);
 router.put('/cases/:caseId/status', protect, updateCaseStatus);
 router.post('/cases/:caseId/completion', protect, saveCompletionData);
-
-// Veriff ID verification routes
-router.post('/cases/:caseId/veriff-session', protect, createVeriffSession);
-router.get('/cases/:caseId/veriff-status', protect, getVeriffSessionStatus);
-router.post('/veriff/webhook', veriffWebhook); // No auth required for webhook
 
 // Quote management routes (protected)
 router.put('/cases/:caseId/quote', protect, isQuoteManager, updateQuoteByCaseId);

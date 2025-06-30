@@ -129,6 +129,25 @@ exports.isQuoteManager = (req, res, next) => {
   next();
 };
 
+// Middleware for user management (admin, agent, or estimator can view users)
+exports.isUserManager = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      error: 'Not authorized to access this route'
+    });
+  }
+
+  if (req.user.role !== 'admin' && req.user.role !== 'agent' && req.user.role !== 'estimator') {
+    return res.status(403).json({
+      success: false,
+      error: `User role ${req.user.role} is not authorized to access this route`
+    });
+  }
+
+  next();
+};
+
 // Debug middleware for estimator role
 exports.isEstimatorDebug = (req, res, next) => {
   console.log('isEstimator middleware - User:', req.user ? req.user.id : 'No user');

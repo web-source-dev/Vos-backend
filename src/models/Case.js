@@ -47,30 +47,6 @@ const CaseSchema = new mongoose.Schema({
       }
     }
   },
-  veriffSession: {
-    sessionId: String,
-    status: {
-      type: String,
-      enum: ['created', 'pending', 'approved', 'declined', 'expired', 'abandoned', 'unknown'],
-      default: 'created'
-    },
-    decision: {
-      type: String,
-      enum: ['approved', 'declined', 'unknown'],
-      default: 'unknown'
-    },
-    verified: {
-      type: Boolean,
-      default: false
-    },
-    verificationData: mongoose.Schema.Types.Mixed,
-    createdAt: {
-      type: Date,
-      default: Date.now
-    },
-    verifiedAt: Date,
-    lastChecked: Date
-  },
   currentStage: {
     type: Number,
     min: 1,

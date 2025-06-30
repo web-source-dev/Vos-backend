@@ -25,6 +25,7 @@
     "mongoose": "^7.5.0",
     "multer": "^2.0.1",
     "nodemailer": "^7.0.3",
+    "onfido": "^4.3.0",
     "pdfkit": "^0.17.1",
     "uuid": "^11.1.0"
   },

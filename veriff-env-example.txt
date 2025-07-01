@@ -1,0 +1,11 @@
+# Copy this content to your .env file
+
+# Veriff API Configuration
+VERIFF_PUBLIC_KEY=d077f496-2c99-4159-bc33-5f0f3477a7fc
+VERIFF_PRIVATE_KEY=3b8f3d7e-7142-4230-b3a7-dad53e23e209
+VERIFF_API_URL=https://stationapi.veriff.com
+
+# Other required environment variables (update with your actual values)
+JWT_SECRET=your_jwt_secret_here
+MONGODB_URI=your_mongodb_uri_here
+MARKETCHECK_API_KEY=your_marketcheck_api_key_here 

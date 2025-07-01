@@ -73,10 +73,12 @@ app.use('/files', express.static(path.join(__dirname, '../uploads/pdfs')));
 // Import routes
 const authRoutes = require('./routes/auth');
 const allRoutes = require('./routes/allroutes');
+const veriffRoutes = require('./routes/veriff');
 
 // Mount routes
 app.use('/api/auth', authRoutes);
 app.use('/api', allRoutes);
+app.use('/api/veriff', veriffRoutes);
 
 // Basic route
 app.get('/', (req, res) => {

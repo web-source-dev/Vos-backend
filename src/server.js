@@ -15,6 +15,37 @@ connectDB();
 // Initialize express
 const app = express();
 
+// CORS configuration - Updated to handle deployment environment
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'https://vos.rtnglobal.co',
+      'https://vos-backend-bh76.onrender.com',
+      process.env.FRONTEND_URL
+    ].filter(Boolean); // Remove any undefined values
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true, // Enable credentials
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+};
+
+// Apply CORS middleware early before other routes
+app.use(cors(corsOptions));
+
 // Middleware
 app.use(express.json());
 
@@ -29,32 +60,6 @@ app.use(fileUpload({
   tempFileDir: '/tmp/',
   debug: process.env.NODE_ENV === 'development'
 }));
-
-// CORS configuration
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'https://vos.rtnglobal.co',
-      process.env.FRONTEND_URL
-    ].filter(Boolean); // Remove any undefined values
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      console.log('CORS blocked origin:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true // Enable credentials
-};
-
-app.use(cors(corsOptions));
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, '../uploads');

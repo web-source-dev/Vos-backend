@@ -551,4 +551,186 @@ exports.sendDecisionEmail = async (customer, vehicle, quote, baseUrl) => {
     console.error('Error sending decision email:', error);
     throw error;
   }
+};
+
+/**
+ * Send email to customer with document for signing
+ * @param {String} recipientEmail - Customer's email
+ * @param {String} recipientName - Customer's name
+ * @param {Object} vehicleData - Vehicle data
+ * @param {String} signingUrl - URL for signing the document
+ * @param {String} documentType - Type of document to sign
+ * @param {Date} expiresAt - When the signing link expires
+ * @returns {Promise} - Promise resolving to the email info
+ */    
+exports.sendDocumentForSigningEmail = async (
+  recipientEmail,
+  recipientName,
+  vehicleData,
+  signingUrl,
+  documentType,
+  expiresAt
+) => {
+  // Format document type for display
+  const formattedDocumentType = documentType
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+
+  // Format expiry date
+  const expiryDate = new Date(expiresAt).toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || '"VOS System" <no-reply@vossystem.com>',
+    to: recipientEmail,
+    subject: `Please sign your ${formattedDocumentType} - ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #3b82f6;">Document Ready for Signature</h2>
+        <p>Hello ${recipientName},</p>
+        <p>Your ${formattedDocumentType} for the following vehicle is ready for your signature:</p>
+        
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <p><strong>Vehicle:</strong> ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}</p>
+          <p><strong>VIN:</strong> ${vehicleData.vin || 'Not provided'}</p>
+          <p><strong>Document:</strong> ${formattedDocumentType}</p>
+          <p><strong>Expires:</strong> ${expiryDate}</p>
+        </div>
+        
+        <p>Please click the button below to review and sign your document:</p>
+        
+        <p style="margin: 20px 0;">
+          <a href="${signingUrl}" style="background: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+            Sign Document
+          </a>
+        </p>
+        
+        <p style="color: #6b7280; font-size: 14px;">
+          This link will expire on ${expiryDate}. If you need assistance, please contact us directly.
+        </p>
+        
+        <p>Thank you for choosing VOS!</p>
+        <p>The VOS Team</p>
+      </div>
+    `
+  };
+
+  try {
+    // For development, create a test account if needed
+    if (process.env.NODE_ENV !== 'production' && 
+        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
+      const testAccount = await nodemailer.createTestAccount();
+      transporter = nodemailer.createTransport({
+        host: 'smtp.ethereal.email',
+        port: 587,
+        secure: false,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass,
+        },
+      });
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    
+    // In development, log the Ethereal URL to view the email
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Document Signing Email URL: %s', nodemailer.getTestMessageUrl(info));
+    }
+    
+    return info;
+  } catch (error) {
+    console.error('Error sending document signing email:', error);
+    throw error;
+  }
+};
+
+/**
+ * Send email confirming document has been signed
+ * @param {String} recipientEmail - Customer's email
+ * @param {String} recipientName - Customer's name
+ * @param {Object} vehicleData - Vehicle data
+ * @param {String} signedDocumentUrl - URL to download the signed document
+ * @param {String} documentType - Type of document that was signed
+ * @returns {Promise} - Promise resolving to the email info
+ */
+exports.sendSigningCompletionEmail = async (
+  recipientEmail,
+  recipientName,
+  vehicleData,
+  signedDocumentUrl,
+  documentType
+) => {
+  // Format document type for display
+  const formattedDocumentType = documentType
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || '"VOS System" <no-reply@vossystem.com>',
+    to: recipientEmail,
+    subject: `${formattedDocumentType} Signed Successfully - ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #3b82f6;">Document Signed Successfully</h2>
+        <p>Hello ${recipientName},</p>
+        <p>Thank you for signing the ${formattedDocumentType} for your vehicle:</p>
+        
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <p><strong>Vehicle:</strong> ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}</p>
+          <p><strong>VIN:</strong> ${vehicleData.vin || 'Not provided'}</p>
+          <p><strong>Document:</strong> ${formattedDocumentType}</p>
+          <p><strong>Signed Date:</strong> ${new Date().toLocaleDateString()}</p>
+        </div>
+        
+        <p>You can download a copy of your signed document by clicking the button below:</p>
+        
+        <p style="margin: 20px 0;">
+          <a href="${signedDocumentUrl}" style="background: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+            Download Signed Document
+          </a>
+        </p>
+        
+        <p>If you have any questions about this document or the next steps in the process, please don't hesitate to contact us.</p>
+        
+        <p>Thank you for choosing VOS!</p>
+        <p>The VOS Team</p>
+      </div>
+    `
+  };
+
+  try {
+    // For development, create a test account if needed
+    if (process.env.NODE_ENV !== 'production' && 
+        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
+      const testAccount = await nodemailer.createTestAccount();
+      transporter = nodemailer.createTransport({
+        host: 'smtp.ethereal.email',
+        port: 587,
+        secure: false,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass,
+        },
+      });
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    
+    // In development, log the Ethereal URL to view the email
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Signing Completion Email URL: %s', nodemailer.getTestMessageUrl(info));
+    }
+    
+    return info;
+  } catch (error) {
+    console.error('Error sending signing completion email:', error);
+    throw error;
+  }
 }; 

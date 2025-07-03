@@ -306,8 +306,6 @@ exports.getInspectionByToken = async (req, res) => {
       id: inspection._id,
       sectionsCount: inspection.sections?.length || 0,
       overallRating: inspection.overallRating,
-      estimatedRepairCost: inspection.estimatedRepairCost,
-      estimatedRepairTime: inspection.estimatedRepairTime,
       completed: inspection.completed
     });
 
@@ -317,8 +315,6 @@ exports.getInspectionByToken = async (req, res) => {
           questionsCount: section.questions?.length || 0,
           rating: section.rating,
           score: section.score,
-          repairCost: section.repairCost,
-          repairTime: section.repairTime
         });
       });
     }
@@ -367,8 +363,6 @@ exports.submitInspection = async (req, res) => {
         sections: inspectionData.sections.map(section => {
           console.log(`Processing section: ${section.name}`, {
             questionsCount: section.questions?.length || 0,
-            hasRepairCost: !!section.repairCost,
-            hasRepairTime: !!section.repairTime
           });
           
           return {
@@ -400,8 +394,6 @@ exports.submitInspection = async (req, res) => {
             score: section.score || 0,
             maxScore: section.maxScore || 0,
             completed: section.completed || false,
-            repairCost: section.repairCost || 0,
-            repairTime: section.repairTime || 0
           };
         }),
         overallRating: inspectionData.overallRating || 0,
@@ -412,8 +404,6 @@ exports.submitInspection = async (req, res) => {
         completedAt: new Date(),
         inspectionNotes: inspectionData.inspectionNotes || '',
         recommendations: Array.isArray(inspectionData.recommendations) ? inspectionData.recommendations : [],
-        estimatedRepairCost: inspectionData.totalRepairCost || 0,
-        estimatedRepairTime: inspectionData.totalRepairTime || 'No repairs needed'
       },
       { new: true }
     ).populate('vehicle').populate('customer');
@@ -794,7 +784,7 @@ exports.completeCase = async (req, res) => {
       caseData.customer,
       caseData.vehicle,
       caseData.transaction,
-      `${process.env.BASE_URL}/files/${pdfResult.fileName}`,
+      `${process.env.NEXT_PUBLIC_API_URL}/uploads/pdfs/${pdfResult.fileName}`,
       process.env.BASE_URL
     );
 
@@ -802,7 +792,7 @@ exports.completeCase = async (req, res) => {
       success: true,
       data: {
         case: updatedCase,
-        pdfUrl: `${process.env.BASE_URL}/files/${pdfResult.fileName}`
+        pdfUrl: `${process.env.NEXT_PUBLIC_API_URL}/uploads/pdfs/${pdfResult.fileName}`
       }
     });
   } catch (error) {
@@ -946,7 +936,7 @@ exports.completeCaseWithToken = async (req, res) => {
       caseData.customer,
       caseData.vehicle,
       caseData.transaction,
-      `${process.env.BASE_URL}/files/${pdfResult.fileName}`,
+      `${process.env.NEXT_PUBLIC_API_URL}/uploads/pdfs/${pdfResult.fileName}`,
       process.env.BASE_URL
     );
 
@@ -954,7 +944,7 @@ exports.completeCaseWithToken = async (req, res) => {
       success: true,
       data: {
         case: updatedCase,
-        pdfUrl: `${process.env.BASE_URL}/files/${pdfResult.fileName}`
+        pdfUrl: `${process.env.NEXT_PUBLIC_API_URL}/uploads/pdfs/${pdfResult.fileName}`
       }
     });
   } catch (error) {
@@ -1483,7 +1473,7 @@ exports.completeCaseByCaseId = async (req, res) => {
       caseData.customer,
       caseData.vehicle,
       caseData.transaction,
-      `${process.env.BASE_URL}/files/${pdfResult.fileName}`,
+      `${process.env.NEXT_PUBLIC_API_URL}/uploads/pdfs/${pdfResult.fileName}`,
       process.env.BASE_URL
     );
 
@@ -1493,7 +1483,7 @@ exports.completeCaseByCaseId = async (req, res) => {
       success: true,
       data: {
         case: updatedCase,
-        pdfUrl: `${process.env.BASE_URL}/files/${pdfResult.fileName}`
+        pdfUrl: `${process.env.NEXT_PUBLIC_API_URL}/uploads/pdfs/${pdfResult.fileName}`
       }
     });
   } catch (error) {
@@ -1585,10 +1575,15 @@ exports.savePaperworkByCaseId = async (req, res) => {
 
     // Update vehicle information in the vehicle database first
     const vehicleUpdateData = {
+      year: paperworkData.billOfSale?.vehicleYear || caseData.vehicle?.year,
+      make: paperworkData.billOfSale?.vehicleMake || caseData.vehicle?.make,
+      model: paperworkData.billOfSale?.vehicleModel || caseData.vehicle?.model,
+      vin: paperworkData.billOfSale?.vehicleVIN || caseData.vehicle?.vin,
+      currentMileage: paperworkData.billOfSale?.vehicleMileage || caseData.vehicle?.currentMileage,
       color: paperworkData.billOfSale?.vehicleColor || caseData.vehicle?.color,
+      bodyStyle: paperworkData.billOfSale?.vehicleBodyStyle || caseData.vehicle?.bodyStyle,
       licensePlate: paperworkData.billOfSale?.vehicleLicensePlate || caseData.vehicle?.licensePlate,
       licenseState: paperworkData.billOfSale?.vehicleLicenseState || caseData.vehicle?.licenseState,
-      bodyStyle: paperworkData.billOfSale?.vehicleBodyStyle || caseData.vehicle?.bodyStyle,
       titleNumber: paperworkData.billOfSale?.vehicleTitleNumber || caseData.vehicle?.titleNumber,
       titleStatus: paperworkData.billOfSale?.titleStatus || caseData.vehicle?.titleStatus,
       knownDefects: paperworkData.billOfSale?.knownDefects || caseData.vehicle?.knownDefects,
@@ -1962,7 +1957,7 @@ exports.sendCustomerEmail = async (req, res) => {
           caseData.customer,
           caseData.vehicle,
           caseData.transaction,
-          caseData.pdfCaseFile ? `${process.env.BASE_URL}/files/${path.basename(caseData.pdfCaseFile)}` : null,
+          caseData.pdfCaseFile ? `${process.env.NEXT_PUBLIC_API_URL}/uploads/pdfs/${path.basename(caseData.pdfCaseFile)}` : null,
           process.env.BASE_URL
         );
         break;
@@ -2182,74 +2177,6 @@ const fetchMarketCheckPricing = async (vin) => {
   }
 };
 
-// Alternative MarketCheck API implementation using different endpoint
-const fetchMarketCheckPricingAlternative = async (vin) => {
-  try {
-    console.log(`Fetching vehicle pricing from MarketCheck API (alternative) for VIN: ${vin}`);
-
-    const marketCheckApiKey = process.env.MARKETCHECK_API_KEY;
-    
-    if (!marketCheckApiKey) {
-      throw new Error('MarketCheck API key not configured. Please set MARKETCHECK_API_KEY environment variable.');
-    }
-
-    // Alternative MarketCheck API endpoint for vehicle search and pricing
-    const marketCheckUrl = `https://marketcheck-prod.apigee.net/v1/search?vin=${vin}`;
-    
-    const response = await fetch(marketCheckUrl, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${marketCheckApiKey}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('MarketCheck API alternative response error:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText
-      });
-      throw new Error(`MarketCheck API alternative request failed with status: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    
-    console.log('MarketCheck API alternative response:', data);
-
-    // Parse MarketCheck API response for search results
-    if (data && data.listings && data.listings.length > 0) {
-      // Calculate average price from listings
-      const prices = data.listings
-        .filter(listing => listing.price && !isNaN(parseFloat(listing.price)))
-        .map(listing => parseFloat(listing.price));
-      
-      if (prices.length > 0) {
-        const averagePrice = prices.reduce((sum, price) => sum + price, 0) / prices.length;
-        return {
-          estimatedValue: Math.round(averagePrice),
-          source: 'MarketCheck API Alternative (Average from Listings)'
-        };
-      }
-    }
-
-    // If no listings, try to get from vehicle details
-    if (data && data.vehicle && data.vehicle.price) {
-      return {
-        estimatedValue: parseFloat(data.vehicle.price),
-        source: 'MarketCheck API Alternative (Vehicle Details)'
-      };
-    }
-
-    throw new Error('No pricing data available from MarketCheck API Alternative');
-
-  } catch (error) {
-    console.error('Error fetching from MarketCheck API alternative:', error);
-    throw error;
-  }
-};
 
 // Save completion data by case ID (for authenticated users)
 exports.saveCompletionData = async (req, res) => {
@@ -2514,6 +2441,100 @@ exports.getAnalytics = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message
+    });
+  }
+};
+
+// Get vehicle specifications from VIN using MarketCheck API
+exports.getVehicleSpecs = async (req, res) => {
+  try {
+    const { vin } = req.params;
+
+    if (!vin) {
+      return res.status(400).json({
+        success: false,
+        error: 'VIN is required'
+      });
+    }
+
+    const marketCheckApiKey = process.env.MARKETCHECK_API_KEY;
+    
+    if (!marketCheckApiKey) {
+      throw new Error('MarketCheck API key not configured. Please set MARKETCHECK_API_KEY environment variable.');
+    }
+
+    // Use the vehicle specs endpoint from MarketCheck
+    const specsUrl = `https://mc-api.marketcheck.com/v2/decode/car/${encodeURIComponent(vin)}/specs?api_key=${marketCheckApiKey}`;
+    
+    try {
+      const response = await axios.get(specsUrl);
+      const data = response.data;
+      console.log('MarketCheck API specs response for getVehicleSpecs:', data);
+      
+      // Extract only the needed vehicle specs for frontend
+      const vehicleSpecs = {
+        year: data.year || '',
+        make: data.make || '',
+        model: data.model || '',
+        trim: data.trim || '',
+        body_style: data.body_style || '',
+        engine: data.engine || '',
+        transmission: data.transmission || '',
+        drivetrain: data.drivetrain || '',
+        fuel_type: data.fuel_type || '',
+        doors: data.doors || '',
+        exterior_color: data.exterior_color || '',
+        interior_color: data.interior_color || ''
+      };
+
+      // Store specs in the vehicle record if it exists
+      const vehicle = await Vehicle.findOne({ vin: vin });
+      if (vehicle) {
+        // Update the vehicle with basic specs
+        if (vehicleSpecs.year) vehicle.year = vehicleSpecs.year;
+        if (vehicleSpecs.make) vehicle.make = vehicleSpecs.make;
+        if (vehicleSpecs.model) vehicle.model = vehicleSpecs.model;
+        if (vehicleSpecs.body_style) vehicle.bodyStyle = vehicleSpecs.body_style;
+        if (vehicleSpecs.exterior_color) vehicle.color = vehicleSpecs.exterior_color;
+        
+        await vehicle.save();
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: vehicleSpecs
+      });
+    } catch (error) {
+      console.error('MarketCheck specs endpoint error:', error.response?.data || error.message);
+      
+      // If specs endpoint fails, try to get basic info from VIN
+      try {
+        // Use the pricing function but extract just the specs
+        const pricingData = await fetchMarketCheckPricing(vin);
+        
+        // The pricing function might have found some basic vehicle info
+        return res.status(200).json({
+          success: true,
+          data: {
+            year: pricingData.year || '',
+            make: pricingData.make || '',
+            model: pricingData.model || ''
+          },
+          source: 'Pricing API fallback'
+        });
+      } catch (secondError) {
+        console.error('Error fetching vehicle specs from pricing fallback:', secondError);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to get vehicle specifications from MarketCheck API'
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Error in getVehicleSpecs:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch vehicle specifications'
     });
   }
 };

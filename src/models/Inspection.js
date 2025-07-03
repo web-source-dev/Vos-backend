@@ -96,14 +96,6 @@ const InspectionSectionSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  repairCost: {
-    type: Number,
-    default: 0
-  },
-  repairTime: {
-    type: Number,
-    default: 0
-  }
 });
 
 const InspectionSchema = new mongoose.Schema({
@@ -169,8 +161,6 @@ const InspectionSchema = new mongoose.Schema({
   completedAt: Date,
   inspectionNotes: String,
   recommendations: [String],
-  estimatedRepairCost: Number,
-  estimatedRepairTime: String,
   safetyIssues: [{
     severity: {
       type: String,

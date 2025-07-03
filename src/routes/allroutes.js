@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { protect, isAdmin, isAgent, isEstimator, isInspector, isAdminOrAgent, isEstimatorDebug, isQuoteManager, isUserManager } = require('../middleware/auth');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const {
   createCase,
   scheduleInspection,
@@ -35,8 +38,54 @@ const {
   getInspectorInspections,
   sendCustomerEmail,
   getVehiclePricing,
-  getAnalytics
+  getVehicleSpecs,
+  getAnalytics,
+  uploadAndProcessOBD2PDF,
+  getOBD2Diagnostics
 } = require('../controllers/allcontrollers');
+
+const signingController = require('../controllers/signing');
+
+const {
+  createSigningRequest,
+  getSigningSession,
+  submitSignedDocument,
+  getSigningStatus,
+  getSigningStatusByCaseId
+} = signingController;
+
+// Configure multer for PDF file uploads
+const pdfStorage = multer.diskStorage({
+  destination: function(req, file, cb) {
+    // Create directory if it doesn't exist
+    const dir = path.join(__dirname, '../../uploads/diagnostics');
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: function(req, file, cb) {
+    // Add timestamp to filename to prevent duplicates
+    const timestamp = Date.now();
+    cb(null, `obd2-${timestamp}-${file.originalname}`);
+  }
+});
+
+// Create multer upload instance
+const uploadPDF = multer({
+  storage: pdfStorage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // Limit file size to 10MB
+  },
+  fileFilter: function(req, file, cb) {
+    // Accept only PDFs
+    if (file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF files are allowed'), false);
+    }
+  }
+});
 
 // Auth routes
 router.get('/auth/me', protect, getCurrentUser);
@@ -49,7 +98,6 @@ router.delete('/users/:userId', protect, isAdmin, deleteUser);
 
 // Inspector routes
 router.get('/inspections/assigned', protect, isInspector, getInspectorInspections);
-
 // Case management routes (protected)
 router.get('/cases', protect, getCases);
 router.get('/cases/:caseId', protect, getCase);
@@ -61,6 +109,13 @@ router.get('/cases/:caseId/pdf', generateCaseFile);
 router.get('/cases/:caseId/bill-of-sale', generateBillOfSalePDF);
 router.put('/cases/:caseId/status', protect, updateCaseStatus);
 router.post('/cases/:caseId/completion', protect, saveCompletionData);
+
+// Document signing routes
+router.post('/cases/:caseId/sign-request', protect, createSigningRequest);
+router.get('/signing/:token', getSigningSession);
+router.post('/signing/:token/submit', submitSignedDocument);
+router.get('/signing/:token/status', getSigningStatus);
+router.get('/cases/:caseId/signing-status', protect, getSigningStatusByCaseId);
 
 // Quote management routes (protected)
 router.put('/cases/:caseId/quote', protect, isQuoteManager, updateQuoteByCaseId);
@@ -89,8 +144,12 @@ router.get('/quote/:id/pdf', generateCaseFileWithToken);
 
 // Vehicle pricing routes
 router.get('/vehicle/pricing/:vin', protect, getVehiclePricing);
+router.get('/vehicle/specs/:vin', protect, getVehicleSpecs);
 
 // Analytics routes (protected)
 router.get('/analytics', protect, isAdmin, getAnalytics);
+
+// Add signature to PDF route
+router.post('/cases/:id/add-signature', protect, signingController.addSignatureToPdf);
 
 module.exports = router;

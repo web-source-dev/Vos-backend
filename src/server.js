@@ -67,8 +67,38 @@ if (!fs.existsSync(uploadsDir)) {
 // Serve static files from the uploads folder
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Serve PDF files
-app.use('/files', express.static(path.join(__dirname, '../uploads/pdfs')));
+// Serve PDF files from the pdfs folder with proper debugging
+app.use('/files', (req, res, next) => {
+  console.log('PDF file requested:', req.url);
+  
+  // Clean the URL (remove any query parameters)
+  const cleanUrl = req.url.split('?')[0];
+  const filePath = path.join(__dirname, '../uploads/pdfs', cleanUrl);
+  
+  console.log('Full path:', filePath);
+  
+  // Check if file exists
+  fs.access(filePath, fs.constants.F_OK, (err) => {
+    if (err) {
+      console.log('File not found:', filePath);
+      console.log('Error:', err.message);
+      
+      // List available files for debugging
+      fs.readdir(path.join(__dirname, '../uploads/pdfs'), (dirErr, files) => {
+        if (!dirErr) {
+          console.log('Available files in pdfs directory:', files);
+        }
+        res.status(404).send('File not found');
+      });
+    } else {
+      console.log('File exists, serving:', filePath);
+      // Set content type for PDF
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'inline; filename=' + path.basename(filePath));
+      next();
+    }
+  });
+}, express.static(path.join(__dirname, '../uploads/pdfs')));
 
 // Import routes
 const authRoutes = require('./routes/auth');

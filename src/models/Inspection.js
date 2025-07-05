@@ -125,6 +125,9 @@ const InspectionSchema = new mongoose.Schema({
   scheduledTime: {
     type: String,
   },
+  notesForInspector: {
+    type: String,
+  },
   status: {
     type: String,
     enum: ['scheduled', 'in-progress', 'completed', 'cancelled'],
@@ -179,6 +182,13 @@ const InspectionSchema = new mongoose.Schema({
     estimatedCost: Number,
     recommendedAction: String
   }],
+  vinVerification: {
+    vinNumber: String,
+    vinMatch: {
+      type: String,
+      enum: ['yes', 'no', 'not_verified']
+    }
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'

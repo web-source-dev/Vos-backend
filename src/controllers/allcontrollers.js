@@ -227,11 +227,79 @@ exports.createCase = async (req, res) => {
   }
 };
 
+// Update an existing case with customer and vehicle information
+exports.updateCase = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+    const { customer: customerData, vehicle: vehicleData, documents, agentInfo } = req.body;
+
+    // Find the existing case
+    const existingCase = await Case.findById(caseId)
+      .populate('customer')
+      .populate('vehicle');
+
+    if (!existingCase) {
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
+
+    // Update customer record
+    const customerId = typeof existingCase.customer === 'string' ? existingCase.customer : existingCase.customer._id;
+    const updatedCustomer = await Customer.findByIdAndUpdate(
+      customerId,
+      {
+        ...customerData,
+        agent: req.user.id,
+        storeLocation: agentInfo.storeLocation
+      },
+      { new: true }
+    );
+
+    // Update vehicle record
+    const vehicleId = typeof existingCase.vehicle === 'string' ? existingCase.vehicle : existingCase.vehicle._id;
+    const updatedVehicle = await Vehicle.findByIdAndUpdate(
+      vehicleId,
+      {
+        ...vehicleData,
+        customer: updatedCustomer._id
+      },
+      { new: true }
+    );
+
+    // Update case record
+    const updatedCase = await Case.findByIdAndUpdate(
+      caseId,
+      {
+        documents: typeof documents === 'string' ? documents : {
+          driverLicenseFront: documents?.driverLicenseFront || '',
+          driverLicenseRear: documents?.driverLicenseRear || '',
+          vehicleTitle: documents?.vehicleTitle || ''
+        }
+      },
+      { new: true }
+    ).populate('customer')
+     .populate('vehicle');
+
+    res.status(200).json({
+      success: true,
+      data: updatedCase
+    });
+  } catch (error) {
+    console.error('Update case error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
 // Schedule inspection and assign inspector
 exports.scheduleInspection = async (req, res) => {
   try {
     const { caseId } = req.params;
-    const { inspector, scheduledDate, scheduledTime } = req.body;
+    const { inspector, scheduledDate, scheduledTime, notesForInspector } = req.body;
 
     const caseData = await Case.findById(caseId)
       .populate('customer')
@@ -251,6 +319,7 @@ exports.scheduleInspection = async (req, res) => {
       inspector,
       scheduledDate,
       scheduledTime,
+      notesForInspector,
       status: 'scheduled',
       createdBy: req.user.id
     });
@@ -404,6 +473,7 @@ exports.submitInspection = async (req, res) => {
         completedAt: new Date(),
         inspectionNotes: inspectionData.inspectionNotes || '',
         recommendations: Array.isArray(inspectionData.recommendations) ? inspectionData.recommendations : [],
+        vinVerification: inspectionData.vinVerification || null,
       },
       { new: true }
     ).populate('vehicle').populate('customer');
@@ -2535,6 +2605,90 @@ exports.getVehicleSpecs = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to fetch vehicle specifications'
+    });
+  }
+};
+
+// Customer intake form submission
+exports.customerIntake = async (req, res) => {
+  try {
+    const { customer: customerData, vehicle: vehicleData } = req.body;
+
+    console.log('Customer intake submission received:', {
+      customer: customerData.firstName + ' ' + customerData.lastName,
+      vehicle: vehicleData.year + ' ' + vehicleData.make + ' ' + vehicleData.model
+    });
+
+    // Create customer record (without agent assignment)
+    const customer = await Customer.create({
+      ...customerData,
+      agent: null, // No agent assigned yet
+      storeLocation: '' // Will be assigned by agent later
+    });
+
+    // Create vehicle record
+    const vehicle = await Vehicle.create({
+      ...vehicleData,
+      customer: customer._id
+    });
+
+    // Create case record with initial stage
+    const newCase = await Case.create({
+      customer: customer._id,
+      vehicle: vehicle._id,
+      currentStage: 1,
+      status: 'new',
+      createdBy: null, // No user assigned yet
+      documents: {
+        driverLicenseFront: '',
+        driverLicenseRear: '',
+        vehicleTitle: ''
+      },
+      stageStatuses: {
+        1: 'complete',
+        2: 'pending',
+        3: 'pending',
+        4: 'pending',
+        5: 'pending',
+        6: 'pending',
+        7: 'pending'
+      }
+    });
+
+    // Populate the references for the response
+    const populatedCase = await Case.findById(newCase._id)
+      .populate('customer')
+      .populate('vehicle');
+
+    // Send email notification to admin
+    try {
+      await emailService.sendCustomerIntakeNotification(
+        customer,
+        vehicle,
+        populatedCase,
+        process.env.BASE_URL
+      );
+    } catch (emailError) {
+      console.error('Error sending customer intake notification email:', emailError);
+      // Don't fail the request if email fails
+    }
+
+    console.log('Customer intake case created successfully:', populatedCase._id);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        caseId: populatedCase._id,
+        customerId: customer._id,
+        vehicleId: vehicle._id,
+        message: 'Customer intake submitted successfully'
+      }
+    });
+  } catch (error) {
+    console.error('Customer intake error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 };

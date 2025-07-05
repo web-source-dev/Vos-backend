@@ -40,6 +40,14 @@ const VehicleSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  hasTitleInPossession: {
+    type: Boolean,
+    default: false
+  },
+  titleInOwnName: {
+    type: Boolean,
+    default: false
+  },
   knownDefects: String,
   estimatedValue: {
     type: Number,

@@ -28,6 +28,7 @@ const CustomerSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  notes:String,
   agent: {
       type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

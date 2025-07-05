@@ -6,6 +6,8 @@ const path = require('path');
 const fs = require('fs');
 const {
   createCase,
+  updateCase,
+  customerIntake,
   scheduleInspection,
   getInspectionByToken,
   submitInspection,
@@ -102,7 +104,11 @@ router.get('/inspections/assigned', protect, isInspector, getInspectorInspection
 router.get('/cases', protect, getCases);
 router.get('/cases/:caseId', protect, getCase);
 router.post('/cases', protect, createCase);
+router.put('/cases/:caseId', protect, updateCase);
 router.post('/cases/:caseId/inspection', protect, scheduleInspection);
+
+// Customer intake route (public - no authentication required)
+router.post('/customer-intake', customerIntake);
 router.post('/cases/:caseId/estimator', protect, assignEstimator);
 router.post('/cases/:caseId/complete', protect, completeCase);
 router.get('/cases/:caseId/pdf', generateCaseFile);
@@ -143,8 +149,8 @@ router.post('/quote/:id/complete', completeCaseWithToken);
 router.get('/quote/:id/pdf', generateCaseFileWithToken);
 
 // Vehicle pricing routes
-router.get('/vehicle/pricing/:vin', protect, getVehiclePricing);
-router.get('/vehicle/specs/:vin', protect, getVehicleSpecs);
+router.get('/vehicle/pricing/:vin', getVehiclePricing);
+router.get('/vehicle/specs/:vin', getVehicleSpecs);
 
 // Analytics routes (protected)
 router.get('/analytics', protect, isAdmin, getAnalytics);

@@ -734,3 +734,116 @@ exports.sendSigningCompletionEmail = async (
     throw error;
   }
 }; 
+
+// Send customer intake notification to admin
+async function sendCustomerIntakeNotification(customer, vehicle, caseData, baseUrl) {
+  try {
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@vos.com';
+    
+    const subject = `New Customer Intake: ${customer.firstName} ${customer.lastName}`;
+    
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
+          New Customer Intake Submission
+        </h2>
+        
+        <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Customer Information</h3>
+          <p><strong>Name:</strong> ${customer.firstName} ${customer.middleInitial} ${customer.lastName}</p>
+          <p><strong>Phone:</strong> ${customer.cellPhone}</p>
+          <p><strong>Email:</strong> ${customer.email1}</p>
+          ${customer.homePhone ? `<p><strong>Home Phone:</strong> ${customer.homePhone}</p>` : ''}
+          ${customer.email2 ? `<p><strong>Secondary Email:</strong> ${customer.email2}</p>` : ''}
+          ${customer.hearAboutVOS ? `<p><strong>Heard about VOS:</strong> ${customer.hearAboutVOS}</p>` : ''}
+          ${customer.receivedOtherQuote ? `<p><strong>Other Quote:</strong> ${customer.otherQuoteOfferer} - $${customer.otherQuoteAmount}</p>` : ''}
+          ${customer.notes ? `<p><strong>Notes:</strong> ${customer.notes}</p>` : ''}
+        </div>
+        
+        <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Vehicle Information</h3>
+          <p><strong>Vehicle:</strong> ${vehicle.year} ${vehicle.make} ${vehicle.model}</p>
+          <p><strong>Mileage:</strong> ${vehicle.currentMileage}</p>
+          ${vehicle.vin ? `<p><strong>VIN:</strong> ${vehicle.vin}</p>` : ''}
+          ${vehicle.color ? `<p><strong>Color:</strong> ${vehicle.color}</p>` : ''}
+          ${vehicle.bodyStyle ? `<p><strong>Body Style:</strong> ${vehicle.bodyStyle}</p>` : ''}
+          <p><strong>Title Status:</strong> ${vehicle.titleStatus}</p>
+          <p><strong>Loan Status:</strong> ${vehicle.loanStatus}</p>
+          ${vehicle.loanStatus === 'still-has-loan' && vehicle.loanAmount ? `<p><strong>Loan Amount:</strong> $${vehicle.loanAmount}</p>` : ''}
+          ${vehicle.secondSetOfKeys ? '<p><strong>Second Set of Keys:</strong> Yes</p>' : ''}
+          ${vehicle.knownDefects ? `<p><strong>Known Defects:</strong> ${vehicle.knownDefects}</p>` : ''}
+        </div>
+        
+        <div style="background-color: #dbeafe; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
+          <h3 style="color: #1e40af; margin-top: 0;">Next Steps</h3>
+          <p style="margin-bottom: 10px;"><strong>Case ID:</strong> ${caseData._id}</p>
+          <p style="margin-bottom: 10px;">This customer intake has been automatically created in the system.</p>
+          <p style="margin-bottom: 15px;">Please assign an agent and proceed with the inspection scheduling.</p>
+          
+          <a href="${baseUrl}/admin/customers" 
+             style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+            View in Admin Dashboard
+          </a>
+        </div>
+        
+        <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+          <p style="margin: 0; color: #92400e;"><strong>Note:</strong> This customer intake was submitted through the public form and requires agent assignment.</p>
+        </div>
+      </div>
+    `;
+    
+    const textContent = `
+New Customer Intake Submission
+
+Customer Information:
+Name: ${customer.firstName} ${customer.middleInitial} ${customer.lastName}
+Phone: ${customer.cellPhone}
+Email: ${customer.email1}
+${customer.homePhone ? `Home Phone: ${customer.homePhone}` : ''}
+${customer.email2 ? `Secondary Email: ${customer.email2}` : ''}
+${customer.hearAboutVOS ? `Heard about VOS: ${customer.hearAboutVOS}` : ''}
+${customer.receivedOtherQuote ? `Other Quote: ${customer.otherQuoteOfferer} - $${customer.otherQuoteAmount}` : ''}
+${customer.notes ? `Notes: ${customer.notes}` : ''}
+
+Vehicle Information:
+Vehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model}
+Mileage: ${vehicle.currentMileage}
+${vehicle.vin ? `VIN: ${vehicle.vin}` : ''}
+${vehicle.color ? `Color: ${vehicle.color}` : ''}
+${vehicle.bodyStyle ? `Body Style: ${vehicle.bodyStyle}` : ''}
+Title Status: ${vehicle.titleStatus}
+Loan Status: ${vehicle.loanStatus}
+${vehicle.loanStatus === 'still-has-loan' && vehicle.loanAmount ? `Loan Amount: $${vehicle.loanAmount}` : ''}
+${vehicle.secondSetOfKeys ? 'Second Set of Keys: Yes' : ''}
+${vehicle.knownDefects ? `Known Defects: ${vehicle.knownDefects}` : ''}
+
+Next Steps:
+Case ID: ${caseData._id}
+This customer intake has been automatically created in the system.
+Please assign an agent and proceed with the inspection scheduling.
+
+View in Admin Dashboard: ${baseUrl}/admin/customers
+
+Note: This customer intake was submitted through the public form and requires agent assignment.
+    `;
+    
+    const mailOptions = {
+      from: process.env.EMAIL_FROM,
+      to: adminEmail,
+      subject: subject,
+      text: textContent,
+      html: htmlContent
+    };
+    
+    await sendEmail(mailOptions);
+    console.log('Customer intake notification email sent to admin');
+    
+  } catch (error) {
+    console.error('Error sending customer intake notification email:', error);
+    throw error;
+  }
+}
+
+module.exports = {
+  sendCustomerIntakeNotification
+}; 

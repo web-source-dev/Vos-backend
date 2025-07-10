@@ -299,7 +299,7 @@ exports.updateCase = async (req, res) => {
 exports.scheduleInspection = async (req, res) => {
   try {
     const { caseId } = req.params;
-    const { inspector, scheduledDate, scheduledTime, notesForInspector } = req.body;
+    const { inspector, scheduledDate, scheduledTime, notesForInspector, dueByDate, dueByTime } = req.body;
 
     const caseData = await Case.findById(caseId)
       .populate('customer')
@@ -319,6 +319,8 @@ exports.scheduleInspection = async (req, res) => {
       inspector,
       scheduledDate,
       scheduledTime,
+      dueByDate,
+      dueByTime,
       notesForInspector,
       status: 'scheduled',
       createdBy: req.user.id
@@ -346,6 +348,7 @@ exports.scheduleInspection = async (req, res) => {
       data: inspection
     });
   } catch (error) {
+    console.error('Schedule inspection error:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -800,6 +803,46 @@ exports.updateCaseStage = async (req, res) => {
      .populate('inspection')
      .populate('quote')
      .populate('transaction');
+
+    res.status(200).json({
+      success: true,
+      data: updatedCase
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Update case stage by case ID
+exports.updateCaseStageByCaseId = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+    const { currentStage, stageStatuses } = req.body;
+
+    const caseUpdate = { currentStage };
+    if (stageStatuses) {
+      caseUpdate.stageStatuses = stageStatuses;
+    }
+
+    const updatedCase = await Case.findByIdAndUpdate(
+      caseId,
+      caseUpdate,
+      { new: true }
+    ).populate('customer')
+     .populate('vehicle')
+     .populate('inspection')
+     .populate('quote')
+     .populate('transaction');
+    
+    if (!updatedCase) {
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
 
     res.status(200).json({
       success: true,

@@ -21,7 +21,7 @@ let transporter;
  * @param {String} baseUrl - The base URL for the application
  * @returns {Promise} - Promise resolving to the email info
  */
-exports.sendInspectionEmail = async (inspectionData, customerData, vehicleData, baseUrl) => {
+async function sendInspectionEmail(inspectionData, customerData, vehicleData, baseUrl) {
   const inspectionUrl = `${baseUrl}/inspector/${inspectionData.accessToken}`;
   
   const formattedDate = new Date(inspectionData.scheduledDate).toLocaleDateString();
@@ -99,7 +99,7 @@ exports.sendInspectionEmail = async (inspectionData, customerData, vehicleData, 
  * @param {String} baseUrl - The base URL for the application
  * @returns {Promise} - Promise resolving to the email info
  */
-exports.sendEstimatorEmail = async (quoteData, inspectionData, customerData, vehicleData, baseUrl) => {
+async function sendEstimatorEmail(quoteData, inspectionData, customerData, vehicleData, baseUrl) {
   const quoteUrl = `${baseUrl}/estimator/${quoteData.accessToken}`;
   
   const mailOptions = {
@@ -183,7 +183,7 @@ exports.sendEstimatorEmail = async (quoteData, inspectionData, customerData, veh
  * @param {String} baseUrl - The base URL for the application
  * @returns {Promise} - Promise resolving to the email info
  */
-exports.sendCustomerConfirmationEmail = async (customerData, vehicleData, transactionData, pdfUrl, baseUrl) => {
+async function sendCustomerConfirmationEmail(customerData, vehicleData, transactionData, pdfUrl, baseUrl) {
   // Add null checks and default values
   const customer = customerData || {};
   const vehicle = vehicleData || {};
@@ -275,7 +275,7 @@ exports.sendCustomerConfirmationEmail = async (customerData, vehicleData, transa
  * @param {String} baseUrl - The base URL for the application
  * @returns {Promise} - Promise resolving to the email info
  */
-exports.sendQuoteUpdateEmail = async (quoteData, customerData, vehicleData, baseUrl) => {
+async function sendQuoteUpdateEmail(quoteData, customerData, vehicleData, baseUrl) {
   const mailOptions = {
     from: process.env.EMAIL_FROM || '"VOS System" <no-reply@vossystem.com>',
     to: customerData.email1,
@@ -313,7 +313,7 @@ exports.sendQuoteUpdateEmail = async (quoteData, customerData, vehicleData, base
  * @param {String} baseUrl - The base URL for the application
  * @returns {Promise} - Promise resolving to the email info
  */
-exports.sendNegotiationUpdateEmail = async (quoteData, customerData, vehicleData, baseUrl) => {
+async function sendNegotiationUpdateEmail(quoteData, customerData, vehicleData, baseUrl) {
   const mailOptions = {
     from: process.env.EMAIL_FROM || '"VOS System" <no-reply@vossystem.com>',
     to: customerData.email1,
@@ -355,7 +355,7 @@ exports.sendNegotiationUpdateEmail = async (quoteData, customerData, vehicleData
  * @param {String} baseUrl - The base URL for the application
  * @returns {Promise} - Promise resolving to the email info
  */
-exports.sendInspectionCompletedEmail = async (inspectionData, customerData, vehicleData, baseUrl) => {
+async function sendInspectionCompletedEmail(inspectionData, customerData, vehicleData, baseUrl) {
   const mailOptions = {
     from: process.env.EMAIL_FROM || '"VOS System" <no-reply@vossystem.com>',
     to: customerData.email1,
@@ -742,6 +742,24 @@ async function sendCustomerIntakeNotification(customer, vehicle, caseData, baseU
     
     const subject = `New Customer Intake: ${customer.firstName} ${customer.lastName}`;
     
+    // Add the source information to the email context
+    function getSourceLabel(sourceKey) {
+      if (!sourceKey) return 'Not specified';
+      
+      const sources = {
+        "contact_form": "Contact Us Form Submission",
+        "walk_in": "Walk-In",
+        "phone": "Phone",
+        "online": "Online",
+        "on_the_road": "On the Road",
+        "social_media": "Social Media",
+        "other": "Other"
+      };
+      
+      return sources[sourceKey] || sourceKey;
+    }
+    
+    // Add source to the email template
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
@@ -753,6 +771,7 @@ async function sendCustomerIntakeNotification(customer, vehicle, caseData, baseU
           <p><strong>Name:</strong> ${customer.firstName} ${customer.middleInitial} ${customer.lastName}</p>
           <p><strong>Phone:</strong> ${customer.cellPhone}</p>
           <p><strong>Email:</strong> ${customer.email1}</p>
+          <p><strong>Source:</strong> ${getSourceLabel(customer.source)}</p>
           ${customer.homePhone ? `<p><strong>Home Phone:</strong> ${customer.homePhone}</p>` : ''}
           ${customer.email2 ? `<p><strong>Secondary Email:</strong> ${customer.email2}</p>` : ''}
           ${customer.hearAboutVOS ? `<p><strong>Heard about VOS:</strong> ${customer.hearAboutVOS}</p>` : ''}
@@ -799,6 +818,7 @@ Customer Information:
 Name: ${customer.firstName} ${customer.middleInitial} ${customer.lastName}
 Phone: ${customer.cellPhone}
 Email: ${customer.email1}
+Source: ${getSourceLabel(customer.source)}
 ${customer.homePhone ? `Home Phone: ${customer.homePhone}` : ''}
 ${customer.email2 ? `Secondary Email: ${customer.email2}` : ''}
 ${customer.hearAboutVOS ? `Heard about VOS: ${customer.hearAboutVOS}` : ''}
@@ -845,5 +865,11 @@ Note: This customer intake was submitted through the public form and requires ag
 }
 
 module.exports = {
-  sendCustomerIntakeNotification
+  sendCustomerIntakeNotification,
+  sendInspectionEmail,
+  sendEstimatorEmail,
+  sendCustomerConfirmationEmail,
+  sendQuoteUpdateEmail,
+  sendNegotiationUpdateEmail,
+  sendInspectionCompletedEmail
 }; 

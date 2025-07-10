@@ -125,6 +125,12 @@ const InspectionSchema = new mongoose.Schema({
   scheduledTime: {
     type: String,
   },
+  dueByDate: {
+    type: Date,
+  },
+  dueByTime: {
+    type: String,
+  },
   notesForInspector: {
     type: String,
   },

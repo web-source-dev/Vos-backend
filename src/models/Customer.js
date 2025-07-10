@@ -18,6 +18,10 @@ const CustomerSchema = new mongoose.Schema({
   email2: String,
   email3: String,
   hearAboutVOS: String,
+  source: {
+    type: String,
+    enum: ['contact_form', 'walk_in', 'phone', 'online', 'on_the_road', 'social_media', 'other', '']
+  },
   receivedOtherQuote: {
     type: Boolean,
     default: false

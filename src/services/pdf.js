@@ -210,6 +210,11 @@ function generateCasePDF(caseData) {
     doc.text(`Email: ${customer.email1 || ''}`);
     doc.moveDown();
     
+    // Add customer source information to the table data
+    const customerTableData = [
+      ['Source', getSourceLabel(customer.source) || 'Not specified'],
+    ];
+    
     // Add vehicle section
     doc.fontSize(16).text('Vehicle Information', {underline: true});
     doc.fontSize(12).text(`Year: ${vehicle.year || ''}`);
@@ -278,117 +283,223 @@ function generateCasePDF(caseData) {
 function addBillOfSaleContent(doc, customer, vehicle, billOfSale) {
   // Header
   doc.fontSize(20).text('VEHICLE BILL OF SALE', {align: 'center'});
-  doc.moveDown();
+  doc.moveDown(1.5);
 
-  // Date and Transaction ID
-  const currentDate = moment().format('MMMM D, YYYY');
-  doc.fontSize(12).text(`Date: ${billOfSale.saleDate ? moment(billOfSale.saleDate).format('MMMM D, YYYY') : currentDate}`, {align: 'right'});
-  doc.fontSize(12).text(`Transaction ID: ${billOfSale._id || 'Not Assigned'}`, {align: 'right'});
-  doc.moveDown();
+  // Date
+  const saleDate = billOfSale.saleDate ? moment(billOfSale.saleDate).format('YYYY-MM-DD') : moment().format('YYYY-MM-DD');
+  doc.fontSize(12).text(`This Bill of Sale is made and entered into on ${saleDate}, by and between the following parties:`);
+  doc.moveDown(1.5);
 
-  // Seller Information
-  doc.fontSize(16).text('SELLER INFORMATION', {underline: true});
+  // 1. Seller Information
+  doc.fontSize(16).text('1. Seller Information', {underline: true});
+  doc.moveDown(0.5);
   doc.fontSize(12);
-  doc.text(`Name: ${billOfSale.sellerName || customer.firstName + ' ' + customer.lastName || 'Not Provided'}`);
-  doc.text(`Address: ${billOfSale.sellerAddress || 'Not Provided'}`);
-  doc.text(`City: ${billOfSale.sellerCity || 'Not Provided'}`);
-  doc.text(`State: ${billOfSale.sellerState || 'Not Provided'}`);
-  doc.text(`ZIP: ${billOfSale.sellerZip || 'Not Provided'}`);
-  doc.text(`Phone: ${billOfSale.sellerPhone || customer.cellPhone || 'Not Provided'}`);
-  doc.text(`Email: ${billOfSale.sellerEmail || customer.email1 || 'Not Provided'}`);
-  doc.text(`Driver's License #: ${billOfSale.sellerDLNumber || 'Not Provided'}`);
-  doc.text(`Driver's License State: ${billOfSale.sellerDLState || 'Not Provided'}`);
-  doc.moveDown();
+  doc.text(`Full Legal Name(s):`);
+  doc.text(`${billOfSale.sellerName || customer.firstName + ' ' + customer.lastName || 'Not Provided'}`, {indent: 10});
+  doc.moveDown(0.8);
+  
+  doc.text(`Address:`);
+  doc.text(`${billOfSale.sellerAddress || 'Not Provided'}`, {indent: 10});
+  doc.text(`${billOfSale.sellerCity || 'Not Provided'}, ${billOfSale.sellerState || 'Not Provided'}, ${billOfSale.sellerZip || 'Not Provided'}`, {indent: 10});
+  doc.moveDown(0.8);
+  
+  doc.text(`Driver's License/ID Number:`);
+  doc.text(`${billOfSale.sellerDLNumber || 'Not Provided'}`, {indent: 10});
+  doc.moveDown(0.8);
+  
+  doc.text(`Issuing State: ${billOfSale.sellerDLState || 'Not Provided'}`);
+  doc.moveDown(0.8);
+  
+  doc.text(`Contact Phone Number:`);
+  doc.text(`${billOfSale.sellerPhone || customer.cellPhone || 'Not Provided'}`, {indent: 10});
+  doc.moveDown(0.8);
+  
+  doc.text(`Email Address:`);
+  doc.text(`${billOfSale.sellerEmail || customer.email1 || 'Not Provided'}`, {indent: 10});
+  doc.moveDown(1.5);
 
-  // Buyer Information
-  doc.fontSize(16).text('BUYER INFORMATION', {underline: true});
+  // 2. Buyer Information
+  doc.fontSize(16).text('2. Buyer Information', {underline: true});
+  doc.moveDown(0.5);
   doc.fontSize(12);
-  doc.text(`Name: ${billOfSale.buyerName || 'VOS - Vehicle Offer Service'}`);
-  doc.text(`Address: ${billOfSale.buyerAddress || '123 Business Ave'}`);
-  doc.text(`City: ${billOfSale.buyerCity || 'Business City'}`);
-  doc.text(`State: ${billOfSale.buyerState || 'BC'}`);
-  doc.text(`ZIP: ${billOfSale.buyerZip || '12345'}`);
-  doc.text(`Business License: ${billOfSale.buyerBusinessLicense || 'VOS-12345-AB'}`);
-  doc.moveDown();
+  doc.text(`Buyer Name: VOS (VIN On Spot)`);
+  doc.text(`Agent Name: ${billOfSale.agentName || 'Not Specified'}`, {indent: 10});
+  doc.moveDown(0.8);
+  
+  doc.text(`Address:`);
+  doc.text(`${billOfSale.buyerAddress || '123 Business Ave'}`, {indent: 10});
+  doc.text(`${billOfSale.buyerCity || 'Business City'}, ${billOfSale.buyerState || 'BC'}, ${billOfSale.buyerZip || '12345'}`, {indent: 10});
+  doc.moveDown(1.5);
 
-  // Vehicle Information
-  doc.fontSize(16).text('VEHICLE INFORMATION', {underline: true});
+  // 3. Vehicle Information
+  doc.fontSize(16).text('3. Vehicle Information', {underline: true});
+  doc.moveDown(0.5);
   doc.fontSize(12);
-  doc.text(`Year: ${billOfSale.vehicleYear || vehicle.year || 'Not Provided'}`);
-  doc.text(`Make: ${billOfSale.vehicleMake || vehicle.make || 'Not Provided'}`);
-  doc.text(`Model: ${billOfSale.vehicleModel || vehicle.model || 'Not Provided'}`);
-  doc.text(`VIN: ${billOfSale.vehicleVIN || vehicle.vin || 'Not Provided'}`);
-  doc.text(`Color: ${billOfSale.vehicleColor || vehicle.color || 'Not Provided'}`);
-  doc.text(`Body Style: ${billOfSale.vehicleBodyStyle || vehicle.bodyStyle || 'Not Provided'}`);
-  doc.text(`License Plate: ${billOfSale.vehicleLicensePlate || vehicle.licensePlate || 'Not Provided'}`);
-  doc.text(`License State: ${billOfSale.vehicleLicenseState || vehicle.licenseState || 'Not Provided'}`);
-  doc.text(`Title Number: ${billOfSale.vehicleTitleNumber || vehicle.titleNumber || 'Not Provided'}`);
-  doc.text(`Current Odometer: ${billOfSale.odometerReading || vehicle.currentMileage || 'Not Provided'} miles`);
-  doc.moveDown();
+  doc.text(`The Seller hereby sells, transfers, and conveys to the Buyer the following vehicle:`);
+  doc.moveDown(0.8);
+  
+  doc.text(`Year: ${billOfSale.vehicleYear || vehicle.year || 'Not Provided'}`, {indent: 10});
+  doc.text(`Make: ${billOfSale.vehicleMake || vehicle.make || 'Not Provided'}`, {indent: 10});
+  doc.text(`Model: ${billOfSale.vehicleModel || vehicle.model || 'Not Provided'}`, {indent: 10});
+  doc.text(`VIN (Vehicle Identification Number): ${billOfSale.vehicleVIN || vehicle.vin || 'Not Provided'}`, {indent: 10});
+  doc.text(`Odometer Reading: ${billOfSale.odometerReading || vehicle.currentMileage || 'Not Provided'} ${billOfSale.odometerAccurate ? '(Actual mileage)' : '(Not Actual mileage)'}`, {indent: 10});
+  doc.text(`License Plate Number: ${billOfSale.vehicleLicensePlate || vehicle.licensePlate || 'Not Provided'}`, {indent: 10});
+  doc.text(`Title Status (as represented by Seller): ${billOfSale.titleStatus || vehicle.titleStatus || 'Clean'}`, {indent: 10});
+  doc.moveDown(0.8);
+  
+  doc.text(`Any known significant defects or issues (as disclosed by Seller):`);
+  doc.text(billOfSale.knownDefects || vehicle.knownDefects || 'None known', {indent: 10});
+  doc.moveDown(1.5);
 
-  // Sale Information
-  doc.fontSize(16).text('SALE INFORMATION', {underline: true});
+  // 4. Sale Terms and Payment
+  doc.fontSize(16).text('4. Sale Terms and Payment', {underline: true});
+  doc.moveDown(0.5);
   doc.fontSize(12);
-  doc.text(`Sale Price: $${(billOfSale.salePrice || 0).toLocaleString()}`);
-  doc.text(`Payment Method: ${billOfSale.paymentMethod || 'Not Specified'}`);
-  doc.moveDown();
+  doc.text(`Purchase Price: $${(billOfSale.salePrice || 0).toLocaleString()} Dollars (USD)`, {indent: 10});
+  doc.text(`Payment Method: ${billOfSale.paymentMethod || 'Not Specified'}`, {indent: 10});
+  doc.text(`Payment Date: ${saleDate}`, {indent: 10});
+  doc.moveDown(0.5);
+  doc.text(`The Seller acknowledges receipt of the full purchase price from the Buyer.`);
+  doc.moveDown(1.5);
 
-  // Title & Odometer Disclosure
-  doc.fontSize(16).text('TITLE & ODOMETER DISCLOSURE', {underline: true});
+  // 5. Exchange of Ownership and Possession
+  doc.fontSize(16).text('5. Exchange of Ownership and Possession', {underline: true});
+  doc.moveDown(0.5);
   doc.fontSize(12);
-  doc.text(`Title Status: ${billOfSale.titleStatus || vehicle.titleStatus || 'Clean'}`);
-  doc.text(`Odometer Reading: ${billOfSale.odometerReading || vehicle.currentMileage || 'Not Provided'} miles`);
-  doc.text(`Odometer Accuracy: ${billOfSale.odometerAccurate ? 'Actual Mileage' : 'Not Actual Mileage - Odometer Discrepancy'}`);
-  doc.moveDown();
+  doc.text(`The Seller agrees to transfer ownership and possession of the above-described vehicle to the Buyer in exchange for the agreed-upon consideration, which can be in one of the following forms (please check applicable):`);
+  doc.moveDown(0.8);
 
-  // Known Defects
-  doc.fontSize(16).text('KNOWN DEFECTS', {underline: true});
+  // Payment type checkboxes
+  const paymentMethod = billOfSale.paymentMethod ? billOfSale.paymentMethod.toLowerCase() : '';
+  doc.text(`${paymentMethod === 'cash' ? '☑' : '☐'} Cash Payment: The full purchase price will be paid to the Seller in cash.`, {indent: 10});
+  doc.text(`${paymentMethod === 'check' ? '☑' : '☐'} Check: A check for the full purchase price will be issued to the Seller.`, {indent: 10});
+  doc.text(`${(paymentMethod === 'wire transfer' || paymentMethod === 'ach' || paymentMethod === 'wire' || paymentMethod === 'bank transfer') ? '☑' : '☐'} Wire Transfer/ACH: The full purchase price will be transferred electronically to the Seller's designated bank account.`, {indent: 10});
+  doc.text(`${paymentMethod === 'trade' ? '☑' : '☐'} Trade: The vehicle is exchanged for another vehicle or goods of agreed-upon value.`, {indent: 10});
+  doc.text(`${paymentMethod === 'gift' ? '☑' : '☐'} Gift: The vehicle is transferred as a gift, with no monetary exchange.`, {indent: 10});
+  doc.text(`${['cash', 'check', 'wire transfer', 'ach', 'wire', 'bank transfer', 'trade', 'gift'].includes(paymentMethod) ? '☐' : '☑'} Other: ${['cash', 'check', 'wire transfer', 'ach', 'wire', 'bank transfer', 'trade', 'gift'].includes(paymentMethod) ? '' : billOfSale.paymentMethod || ''}`, {indent: 10});
+  doc.moveDown(1.5);
+
+  // 6. Itemization of Purchase
+  doc.fontSize(16).text('6. Itemization of Purchase', {underline: true});
+  doc.moveDown(0.5);
   doc.fontSize(12);
-  doc.text(billOfSale.knownDefects || vehicle.knownDefects || 'No defects disclosed');
-  doc.moveDown();
+  const basePrice = billOfSale.baseVehiclePrice || billOfSale.salePrice || 0;
+  const adjustment = billOfSale.repairsAdjustment || 0;
+  const loanPayoff = billOfSale.loanPayoff || 0;
+  const totalPrice = basePrice - adjustment - loanPayoff;
+  
+  doc.text(`Base Vehicle Price: $${basePrice.toLocaleString()}`, {indent: 10});
+  doc.text(`Less: Repairs/Reconditioning Adjustment: -$${adjustment.toLocaleString()}`, {indent: 10});
+  doc.text(`Less: Outstanding Loan Payoff (if applicable): -$${loanPayoff.toLocaleString()}`, {indent: 10});
+  doc.text(`Total Purchase Price: $${totalPrice.toLocaleString()}`, {indent: 10, continued: false});
+  doc.moveDown(1.5);
 
-  // Seller Certification
-  doc.fontSize(16).text('SELLER CERTIFICATION', {underline: true});
+  // 7. Taxes
+  doc.fontSize(16).text('7. Taxes', {underline: true});
+  doc.moveDown(0.5);
   doc.fontSize(12);
-  doc.text('I, the undersigned seller, certify that:');
-  doc.text('1. I am the legal owner of the vehicle described above');
-  doc.text('2. The vehicle is free of all liens and encumbrances');
-  doc.text('3. All information provided is true and accurate to the best of my knowledge');
-  doc.text('4. I understand this vehicle is being sold "AS IS" with no warranties or guarantees');
-  doc.moveDown(2);
+  doc.text(`All municipal, county, and state taxes in relation to the sale of the Vehicle, including sales taxes, shall be paid by (please check one):`);
+  doc.moveDown(0.8);
+  
+  const taxesPaidBy = billOfSale.taxesPaidBy || 'buyer'; // Default to buyer
+  doc.text(`${taxesPaidBy.toLowerCase() === 'buyer' ? '☑' : '☐'} Buyer: And are not included as part of the exchange price.`, {indent: 10});
+  doc.text(`${taxesPaidBy.toLowerCase() === 'seller' ? '☑' : '☐'} Seller: And are included as part of the exchange price.`, {indent: 10});
+  doc.moveDown(1.5);
 
-  // Signature lines
-  doc.fontSize(12).text('Seller Signature: ________________________________', {align: 'left'});
+  // 8. Seller's Representations and Warranties
+  doc.fontSize(16).text('8. Seller\'s Representations and Warranties', {underline: true});
+  doc.moveDown(0.5);
+  doc.fontSize(12);
+  doc.text(`The Seller hereby certifies that:`);
+  doc.moveDown(0.5);
+  
+  doc.text(`• The Seller is the legal owner of the vehicle and has the full right and authority to sell and transfer it.`, {indent: 10});
+  doc.text(`• The vehicle is free from all liens, encumbrances, and claims, except as explicitly disclosed to the Buyer (e.g., outstanding loan as detailed in intake).`, {indent: 10});
+  doc.text(`• The information provided in this Bill of Sale is true and accurate to the best of the Seller's knowledge.`, {indent: 10});
+  doc.moveDown(1.5);
+
+  // 9. Transfer of Ownership and Condition
+  doc.fontSize(16).text('9. Transfer of Ownership and Condition', {underline: true});
+  doc.moveDown(0.5);
+  doc.fontSize(12);
+  doc.text(`The Seller agrees to transfer full ownership of the above-described vehicle to VOS upon receipt of the full purchase price and completion of all required documentation, including the vehicle title.`, {continued: false});
+  doc.moveDown(0.8);
+  
+  doc.text(`The vehicle is sold in "AS-IS, WHERE-IS" condition, unless otherwise specified in a separate written agreement. The Buyer acknowledges that they have had the opportunity to inspect the vehicle (via VOS's inspection process).`, {continued: false});
+  doc.moveDown(1.5);
+
+  // 10. Acknowledgment of Title Transfer Requirement
+  doc.fontSize(16).text('10. Acknowledgment of Title Transfer Requirement', {underline: true});
+  doc.moveDown(0.5);
+  doc.fontSize(12);
+  doc.text(`The Seller understands and acknowledges that the official transfer of vehicle ownership to VOS is contingent upon the Seller providing a valid, clear, and transferable vehicle title within 48 hours of accepting VOS's offer. Failure to provide the title within this timeframe may result in the voiding of the current offer and potentially require a new inspection and renegotiation of the purchase price.`);
+  doc.moveDown(1.5);
+
+  // 11. Signatures
+  doc.fontSize(16).text('11. Signatures', {underline: true});
+  doc.moveDown(0.5);
+  doc.fontSize(12);
+  doc.text(`By signing below, the parties agree to all terms and conditions set forth in this Bill of Sale. This document authorizes the Buyer's and Seller's signatures below.`);
+  doc.moveDown(1.5);
+  
+  // Signature section with lines
+  doc.text(`SELLER(S):`);
   doc.moveDown();
-  doc.text('Date: ________________________________', {align: 'left'});
-  doc.moveDown(2);
-
-  // Buyer Signature
-  doc.fontSize(12).text('Buyer Signature: ________________________________', {align: 'left'});
+  
+  // First signature with underline
+  doc.text(`Signature: `, {continued: true});
+  doc.text(`_______________________________`, {underline: true});
+  doc.moveDown(0.5);
+  doc.text(`${billOfSale.sellerName || customer.firstName + ' ' + customer.lastName || '[Seller\'s Printed Name]'}`);
+  doc.moveDown(0.5);
+  doc.text(`Date: `, {continued: true});
+  doc.text(`____________________`, {underline: true});
+  doc.moveDown(1.5);
+  
+  // Co-owner signature with underline
+  doc.text(`Signature (If applicable, for co-owner): `, {continued: true});
+  doc.text(`_______________________________`, {underline: true});
+  doc.moveDown(0.5);
+  doc.text(`[Co-Seller's Printed Name]`);
+  doc.moveDown(0.5);
+  doc.text(`Date: `, {continued: true});
+  doc.text(`____________________`, {underline: true});
+  doc.moveDown(1.5);
+  
+  // Buyer signature section
+  doc.text(`FOR VOS (BUYER):`);
   doc.moveDown();
-  doc.text('Date: ________________________________', {align: 'left'});
+  
+  // VOS representative signature with underline
+  doc.text(`Authorized Signature: `, {continued: true});
+  doc.text(`_______________________________`, {underline: true});
+  doc.moveDown(0.5);
+  doc.text(`${billOfSale.agentName || '[Printed Name and Title of VOS Representative]'}`);
+  doc.moveDown(0.5);
+  doc.text(`Date: `, {continued: true});
+  doc.text(`____________________`, {underline: true});
+  doc.moveDown();
+}
 
-  // If notary required
-  if (billOfSale.notaryRequired) {
-    doc.moveDown(2);
-    doc.fontSize(16).text('NOTARY ACKNOWLEDGMENT', {underline: true});
-    doc.fontSize(12);
-    doc.text('State of _________________');
-    doc.text('County of _________________');
-    doc.moveDown();
-    doc.text('On this ______ day of ____________, 20____, before me, ________________________,');
-    doc.text('a Notary Public, personally appeared ________________________, known to me');
-    doc.text('(or satisfactorily proven) to be the person whose name is subscribed to the within instrument,');
-    doc.text('and acknowledged that he/she executed the same for the purposes therein contained.');
-    doc.moveDown(2);
-    doc.text('Notary Public Signature: ________________________________');
-    doc.moveDown();
-    doc.text('My Commission Expires: ________________________________');
-  }
-
-  // Legal footer
-  doc.moveDown(2);
-  doc.fontSize(10).text('This document represents a legal transfer of vehicle ownership. Both parties should retain a copy for their records.', {align: 'center'});
+/**
+ * Helper function to convert source code to human-readable label
+ * @param {String} sourceKey - The source key from the customer object
+ * @returns {String} - The human-readable label for the source
+ */
+function getSourceLabel(sourceKey) {
+  if (!sourceKey) return null;
+  
+  const sources = {
+    "contact_form": "Contact Us Form Submission",
+    "walk_in": "Walk-In",
+    "phone": "Phone",
+    "online": "Online",
+    "on_the_road": "On the Road",
+    "social_media": "Social Media",
+    "other": "Other"
+  };
+  
+  return sources[sourceKey] || sourceKey;
 }
 
 

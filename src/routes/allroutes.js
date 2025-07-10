@@ -19,6 +19,7 @@ const {
   updateOfferDecisionByCaseId,
   updatePaperwork,
   updateCaseStage,
+  updateCaseStageByCaseId,
   completeCase,
   completeCaseWithToken,
   completeCaseByCaseId,
@@ -106,6 +107,7 @@ router.get('/cases/:caseId', protect, getCase);
 router.post('/cases', protect, createCase);
 router.put('/cases/:caseId', protect, updateCase);
 router.post('/cases/:caseId/inspection', protect, scheduleInspection);
+router.put('/cases/:caseId/stage', protect, updateCaseStageByCaseId);
 
 // Customer intake route (public - no authentication required)
 router.post('/customer-intake', customerIntake);

@@ -11,6 +11,7 @@ const {
   scheduleInspection,
   getInspectionByToken,
   submitInspection,
+  savePendingInspection,
   assignEstimator,
   getQuoteByToken,
   submitQuote,
@@ -44,7 +45,9 @@ const {
   getVehicleSpecs,
   getAnalytics,
   uploadAndProcessOBD2PDF,
-  getOBD2Diagnostics
+  getOBD2Diagnostics,
+  saveCustomVehicle,
+  getVehicleMakesAndModels
 } = require('../controllers/allcontrollers');
 
 const signingController = require('../controllers/signing');
@@ -142,6 +145,7 @@ router.post('/upload', protect, uploadDocument);
 // Token-based routes (no authentication required)
 router.get('/inspection/:token', getInspectionByToken);
 router.post('/inspection/:token', submitInspection);
+router.put('/inspection/:token/pending', savePendingInspection);
 router.get('/quote/:id', getQuoteByToken);
 router.post('/quote/:id', submitQuote);
 router.post('/quote/:id/decision', updateOfferDecision);
@@ -153,6 +157,10 @@ router.get('/quote/:id/pdf', generateCaseFileWithToken);
 // Vehicle pricing routes
 router.get('/vehicle/pricing/:vin', getVehiclePricing);
 router.get('/vehicle/specs/:vin', getVehicleSpecs);
+
+// Vehicle make/model routes
+router.get('/vehicle/makes-models', getVehicleMakesAndModels);
+router.post('/vehicle/custom', saveCustomVehicle);
 
 // Analytics routes (protected)
 router.get('/analytics', protect, isAdmin, getAnalytics);

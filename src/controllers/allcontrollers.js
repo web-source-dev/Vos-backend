@@ -527,6 +527,103 @@ exports.submitInspection = async (req, res) => {
   }
 };
 
+// Save pending inspection data
+exports.savePendingInspection = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const inspectionData = req.body;
+
+    // Validate inspection data
+    if (!inspectionData.sections || !Array.isArray(inspectionData.sections)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid inspection data format'
+      });
+    }
+
+    // Validate sections have required fields
+    for (const section of inspectionData.sections) {
+      if (!section.id || !section.name) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid section data - missing id or name'
+        });
+      }
+    }
+
+    // Find and update the inspection with pending data
+    const inspection = await Inspection.findOneAndUpdate(
+      { accessToken: token },
+      {
+        sections: inspectionData.sections.map(section => {
+          console.log(`Processing pending section: ${section.name}`, {
+            questionsCount: section.questions?.length || 0,
+          });
+          
+          return {
+            id: section.id,
+            name: section.name,
+            description: section.description || '',
+            icon: section.icon || '',
+            questions: Array.isArray(section.questions) ? section.questions.map(q => ({
+              id: q.id || '',
+              question: q.question || '',
+              type: q.type || 'text',
+              options: Array.isArray(q.options) ? q.options : [],
+              required: q.required || false,
+              answer: q.answer,
+              notes: q.notes || '',
+              photos: Array.isArray(q.photos) ? q.photos : [],
+              subQuestions: Array.isArray(q.subQuestions) ? q.subQuestions.map(sq => ({
+                id: sq.id || '',
+                question: sq.question || '',
+                type: sq.type || 'text',
+                options: Array.isArray(sq.options) ? sq.options : [],
+                answer: sq.answer,
+                notes: sq.notes || '',
+                photos: Array.isArray(sq.photos) ? sq.photos : []
+              })) : []
+            })) : [],
+            rating: section.rating || 0,
+            photos: Array.isArray(section.photos) ? section.photos : [],
+            score: section.score || 0,
+            maxScore: section.maxScore || 0,
+            completed: section.completed || false,
+          };
+        }),
+        overallRating: inspectionData.overallRating || 0,
+        overallScore: inspectionData.overallScore || 0,
+        maxPossibleScore: inspectionData.maxPossibleScore || 0,
+        status: 'in-progress',
+        completed: false,
+        completedAt: null,
+        inspectionNotes: inspectionData.inspectionNotes || '',
+        recommendations: Array.isArray(inspectionData.recommendations) ? inspectionData.recommendations : [],
+        vinVerification: inspectionData.vinVerification || null,
+      },
+      { new: true }
+    ).populate('vehicle').populate('customer');
+
+    if (!inspection) {
+      return res.status(404).json({
+        success: false,
+        error: 'Invalid or expired inspection token'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: inspection
+    });
+  } catch (error) {
+    console.error('Error saving pending inspection:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
 // Assign estimator for quote preparation
 exports.assignEstimator = async (req, res) => {
   try {
@@ -1026,14 +1123,12 @@ exports.completeCaseWithToken = async (req, res) => {
     // Generate case file PDF
     const pdfResult = await pdfService.generateCasePDF(caseWithQuote);
 
-    // Update case with PDF path and completion status
+    // Update case with PDF path and completion status only - don't automatically advance stages
+    // The frontend will call updateCaseStageByCaseId separately to manage stage status
     const updatedCase = await Case.findByIdAndUpdate(
       caseData._id,
       {
         pdfCaseFile: pdfResult.filePath,
-        currentStage: 7,
-        'stageStatuses.6': 'complete',
-        'stageStatuses.7': 'active',
         status: 'completed',
         thankYouSent: true
       },
@@ -1440,15 +1535,8 @@ exports.updateQuoteByCaseId = async (req, res) => {
       });
     }
 
-    // Update case status to next stage
-    await Case.findByIdAndUpdate(
-      caseId,
-      {
-        currentStage: 5,
-        'stageStatuses.4': 'complete',
-        'stageStatuses.5': 'active'
-      }
-    );
+    // Don't automatically advance stages - let the frontend manage stage progression
+    // The frontend will call updateCaseStageByCaseId separately to manage stage status
 
     res.status(200).json({
       success: true,
@@ -1511,22 +1599,15 @@ exports.updateOfferDecisionByCaseId = async (req, res) => {
       });
     }
 
-    // Update case status based on decision
-    let caseUpdate = {
-      'stageStatuses.5': 'complete',
-      'stageStatuses.6': 'active'
-    };
-
-    if (offerDecision.decision === 'accepted') {
-      caseUpdate.currentStage = 6;
-    } else if (offerDecision.decision === 'declined') {
-      caseUpdate.status = 'closed';
+    // Don't automatically advance stages - let the frontend manage stage progression
+    // The frontend will call updateCaseStageByCaseId separately to manage stage status
+    // Only update case status if decision is declined
+    if (offerDecision.decision === 'declined') {
+      await Case.findByIdAndUpdate(
+        caseId,
+        { status: 'closed' }
+      );
     }
-
-    await Case.findByIdAndUpdate(
-      caseId,
-      caseUpdate
-    );
 
     console.log('Offer decision updated successfully');
 
@@ -1567,14 +1648,12 @@ exports.completeCaseByCaseId = async (req, res) => {
     // Generate case file PDF
     const pdfResult = await pdfService.generateCasePDF(caseData);
 
-    // Update case with PDF path and completion status
+    // Update case with PDF path and completion status only - don't automatically advance stages
+    // The frontend will call updateCaseStageByCaseId separately to manage stage status
     const updatedCase = await Case.findByIdAndUpdate(
       caseId,
       {
         pdfCaseFile: pdfResult.filePath,
-        currentStage: 7,
-        'stageStatuses.6': 'complete',
-        'stageStatuses.7': 'active',
         status: 'completed',
         thankYouSent: true
       },
@@ -1757,7 +1836,7 @@ exports.savePaperworkByCaseId = async (req, res) => {
             saleDate: paperworkData.billOfSale?.saleDate || new Date().toISOString().split("T")[0],
             saleTime: paperworkData.billOfSale?.saleTime || new Date().toTimeString().split(" ")[0].slice(0, 5),
             salePrice: paperworkData.billOfSale?.salePrice || 0,
-            paymentMethod: paperworkData.billOfSale?.paymentMethod || 'ACH Transfer',
+            preferredPaymentMethod: paperworkData.preferredPaymentMethod || 'Wire',
             odometerReading: paperworkData.billOfSale?.odometerReading || '',
             odometerAccurate: paperworkData.billOfSale?.odometerAccurate || true,
             titleStatus: updatedVehicle.titleStatus || paperworkData.billOfSale?.titleStatus || 'clean',
@@ -1769,22 +1848,7 @@ exports.savePaperworkByCaseId = async (req, res) => {
             witnessName: paperworkData.billOfSale?.witnessName || '',
             witnessPhone: paperworkData.billOfSale?.witnessPhone || '',
           },
-          bankDetails: {
-            accountHolderName: paperworkData.bankDetails?.accountHolderName || '',
-            routingNumber: paperworkData.bankDetails?.routingNumber || '',
-            accountNumber: paperworkData.bankDetails?.accountNumber || '',
-            accountType: paperworkData.bankDetails?.accountType || 'checking',
-            bankName: paperworkData.bankDetails?.bankName || '',
-            bankPhone: paperworkData.bankDetails?.bankPhone || '',
-            accountOpenedDate: paperworkData.bankDetails?.accountOpenedDate || new Date().toISOString().slice(0, 7),
-            electronicConsentAgreed: paperworkData.bankDetails?.electronicConsentAgreed || false,
-          },
-          taxInfo: {
-            ssn: paperworkData.taxInfo?.ssn || '',
-            taxId: paperworkData.taxInfo?.taxId || '',
-            reportedIncome: paperworkData.taxInfo?.reportedIncome || false,
-            form1099Agreed: paperworkData.taxInfo?.form1099Agreed || false,
-          },
+          preferredPaymentMethod: paperworkData.preferredPaymentMethod || 'Wire',
           documents: documents,
           paymentStatus: paperworkData.status || 'pending',
           submittedAt: paperworkData.submittedAt || new Date(),
@@ -1823,7 +1887,7 @@ exports.savePaperworkByCaseId = async (req, res) => {
             saleDate: paperworkData.billOfSale?.saleDate || new Date().toISOString().split("T")[0],
             saleTime: paperworkData.billOfSale?.saleTime || new Date().toTimeString().split(" ")[0].slice(0, 5),
             salePrice: paperworkData.billOfSale?.salePrice || 0,
-            paymentMethod: paperworkData.billOfSale?.paymentMethod || 'ACH Transfer',
+            preferredPaymentMethod: paperworkData.preferredPaymentMethod || 'Wire',
             odometerReading: paperworkData.billOfSale?.odometerReading || '',
             odometerAccurate: paperworkData.billOfSale?.odometerAccurate || true,
             titleStatus: updatedVehicle.titleStatus || paperworkData.billOfSale?.titleStatus || 'clean',
@@ -1835,22 +1899,7 @@ exports.savePaperworkByCaseId = async (req, res) => {
             witnessName: paperworkData.billOfSale?.witnessName || '',
             witnessPhone: paperworkData.billOfSale?.witnessPhone || '',
           },
-          bankDetails: {
-            accountHolderName: paperworkData.bankDetails?.accountHolderName || '',
-            routingNumber: paperworkData.bankDetails?.routingNumber || '',
-            accountNumber: paperworkData.bankDetails?.accountNumber || '',
-            accountType: paperworkData.bankDetails?.accountType || 'checking',
-            bankName: paperworkData.bankDetails?.bankName || '',
-            bankPhone: paperworkData.bankDetails?.bankPhone || '',
-            accountOpenedDate: paperworkData.bankDetails?.accountOpenedDate || new Date().toISOString().slice(0, 7),
-            electronicConsentAgreed: paperworkData.bankDetails?.electronicConsentAgreed || false,
-          },
-          taxInfo: {
-            ssn: paperworkData.taxInfo?.ssn || '',
-            taxId: paperworkData.taxInfo?.taxId || '',
-            reportedIncome: paperworkData.taxInfo?.reportedIncome || false,
-            form1099Agreed: paperworkData.taxInfo?.form1099Agreed || false,
-          },
+          preferredPaymentMethod: paperworkData.preferredPaymentMethod || 'Wire',
           documents: documents,
           paymentStatus: paperworkData.status || 'pending',
           submittedAt: paperworkData.submittedAt || new Date(),
@@ -1888,7 +1937,7 @@ exports.savePaperworkByCaseId = async (req, res) => {
           saleDate: paperworkData.billOfSale?.saleDate || new Date().toISOString().split("T")[0],
           saleTime: paperworkData.billOfSale?.saleTime || new Date().toTimeString().split(" ")[0].slice(0, 5),
           salePrice: paperworkData.billOfSale?.salePrice || 0,
-          paymentMethod: paperworkData.billOfSale?.paymentMethod || 'ACH Transfer',
+          preferredPaymentMethod: paperworkData.preferredPaymentMethod || 'Wire',
           odometerReading: paperworkData.billOfSale?.odometerReading || '',
           odometerAccurate: paperworkData.billOfSale?.odometerAccurate || true,
           titleStatus: updatedVehicle.titleStatus || paperworkData.billOfSale?.titleStatus || 'clean',
@@ -1900,22 +1949,7 @@ exports.savePaperworkByCaseId = async (req, res) => {
           witnessName: paperworkData.billOfSale?.witnessName || '',
           witnessPhone: paperworkData.billOfSale?.witnessPhone || '',
         },
-        bankDetails: {
-          accountHolderName: paperworkData.bankDetails?.accountHolderName || '',
-          routingNumber: paperworkData.bankDetails?.routingNumber || '',
-          accountNumber: paperworkData.bankDetails?.accountNumber || '',
-          accountType: paperworkData.bankDetails?.accountType || 'checking',
-          bankName: paperworkData.bankDetails?.bankName || '',
-          bankPhone: paperworkData.bankDetails?.bankPhone || '',
-          accountOpenedDate: paperworkData.bankDetails?.accountOpenedDate || new Date().toISOString().slice(0, 7),
-          electronicConsentAgreed: paperworkData.bankDetails?.electronicConsentAgreed || false,
-        },
-        taxInfo: {
-          ssn: paperworkData.taxInfo?.ssn || '',
-          taxId: paperworkData.taxInfo?.taxId || '',
-          reportedIncome: paperworkData.taxInfo?.reportedIncome || false,
-          form1099Agreed: paperworkData.taxInfo?.form1099Agreed || false,
-        },
+        preferredPaymentMethod: paperworkData.preferredPaymentMethod || 'Wire',
         documents: documents,
         paymentStatus: paperworkData.status || 'pending',
         submittedAt: paperworkData.submittedAt || new Date(),
@@ -1934,14 +1968,12 @@ exports.savePaperworkByCaseId = async (req, res) => {
 
     console.log('Transaction created/updated successfully:', transaction._id);
 
-    // Update case with transaction reference and stage status
+    // Update case with transaction reference only - don't automatically advance stages
+    // The frontend will call updateCaseStageByCaseId separately to manage stage status
     const updatedCase = await Case.findByIdAndUpdate(
       caseId,
       {
         transaction: transaction._id,
-        currentStage: 7,
-        'stageStatuses.6': 'complete',
-        'stageStatuses.7': 'active',
         status: 'completed'
       },
       { new: true }
@@ -2729,6 +2761,177 @@ exports.customerIntake = async (req, res) => {
     });
   } catch (error) {
     console.error('Customer intake error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Save custom vehicle make and model
+exports.saveCustomVehicle = async (req, res) => {
+  try {
+    const { make, model } = req.body;
+
+    if (!make || !model) {
+      return res.status(400).json({
+        success: false,
+        error: 'Make and model are required'
+      });
+    }
+
+    // Store in a simple JSON file or database collection
+    // For now, we'll use a simple approach with a JSON file
+    const fs = require('fs').promises;
+    const path = require('path');
+    const customVehiclesPath = path.join(__dirname, '../data/custom-vehicles.json');
+
+    let customVehicles = { makes: [], models: {} };
+    try {
+      // Read existing custom vehicles
+      const existingData = await fs.readFile(customVehiclesPath, 'utf8');
+      customVehicles = JSON.parse(existingData);
+    } catch (error) {
+      // File doesn't exist, use empty structure
+    }
+
+    // Add the new make if it doesn't exist
+    if (!customVehicles.makes.includes(make)) {
+      customVehicles.makes.push(make);
+    }
+
+    // Add the new model if it doesn't exist for this make
+    if (!customVehicles.models[make]) {
+      customVehicles.models[make] = [];
+    }
+
+    if (!customVehicles.models[make].includes(model)) {
+      customVehicles.models[make].push(model);
+    }
+
+    // Ensure directory exists
+    const dir = path.dirname(customVehiclesPath);
+    await fs.mkdir(dir, { recursive: true });
+
+    // Write back to file
+    await fs.writeFile(customVehiclesPath, JSON.stringify(customVehicles, null, 2));
+
+    res.status(200).json({
+      success: true,
+      data: { make, model },
+      message: 'Custom vehicle saved successfully'
+    });
+  } catch (error) {
+    console.error('Error saving custom vehicle:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Get all vehicle makes and models (including custom ones)
+exports.getVehicleMakesAndModels = async (req, res) => {
+  try {
+    const fs = require('fs').promises;
+    const path = require('path');
+    const customVehiclesPath = path.join(__dirname, '../data/custom-vehicles.json');
+
+    // Default vehicle makes and models
+    const defaultMakes = [
+      'Acura', 'Alfa Romeo', 'Aston Martin', 'Audi', 'Bentley', 'BMW', 'Buick', 'Cadillac',
+      'Chevrolet', 'Chrysler', 'Citroen', 'Dodge', 'Ferrari', 'Fiat', 'Ford', 'Genesis',
+      'GMC', 'Honda', 'Hyundai', 'Infiniti', 'Jaguar', 'Jeep', 'Kia', 'Lamborghini',
+      'Land Rover', 'Lexus', 'Lincoln', 'Lotus', 'Maserati', 'Mazda', 'McLaren', 'Mercedes-Benz',
+      'MINI', 'Mitsubishi', 'Nissan', 'Oldsmobile', 'Peugeot', 'Pontiac', 'Porsche', 'Ram',
+      'Renault', 'Rolls-Royce', 'Saab', 'Saturn', 'Scion', 'Subaru', 'Suzuki', 'Tesla',
+      'Toyota', 'Volkswagen', 'Volvo'
+    ];
+
+    const defaultModels = {
+      'Acura': ['CL', 'ILX', 'Integra', 'Legend', 'MDX', 'NSX', 'RDX', 'RL', 'RSX', 'TL', 'TLX', 'TSX', 'ZDX'],
+      'Alfa Romeo': ['4C', 'Giulia', 'Giulietta', 'Stelvio', 'Tonale'],
+      'Aston Martin': ['DB11', 'DB12', 'DBS', 'Vantage', 'Virage'],
+      'Audi': ['A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'Q3', 'Q4', 'Q5', 'Q7', 'Q8', 'RS', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'TT'],
+      'Bentley': ['Bentayga', 'Continental', 'Flying Spur', 'Mulsanne'],
+      'BMW': ['1 Series', '2 Series', '3 Series', '4 Series', '5 Series', '6 Series', '7 Series', '8 Series', 'i3', 'i4', 'i7', 'i8', 'M2', 'M3', 'M4', 'M5', 'M8', 'X1', 'X2', 'X3', 'X4', 'X5', 'X6', 'X7', 'Z4'],
+      'Buick': ['Cascada', 'Enclave', 'Encore', 'Envision', 'LaCrosse', 'Regal', 'Rendezvous', 'Terraza'],
+      'Cadillac': ['ATS', 'CT4', 'CT5', 'CT6', 'CTS', 'DTS', 'Escalade', 'SRX', 'STS', 'XLR', 'XT4', 'XT5', 'XT6'],
+      'Chevrolet': ['Aveo', 'Blazer', 'Camaro', 'Caprice', 'Captiva', 'Cavalier', 'Cobalt', 'Colorado', 'Corvette', 'Cruze', 'Equinox', 'Express', 'HHR', 'Impala', 'Malibu', 'Monte Carlo', 'Prizm', 'S10', 'Silverado', 'Sonic', 'Spark', 'Suburban', 'Tahoe', 'Tracker', 'TrailBlazer', 'Traverse', 'Trax', 'Uplander', 'Venture'],
+      'Chrysler': ['200', '300', '300M', 'Aspen', 'Cirrus', 'Concorde', 'Crossfire', 'Grand Voyager', 'LHS', 'New Yorker', 'Pacifica', 'PT Cruiser', 'Sebring', 'Town & Country', 'Voyager'],
+      'Citroen': ['C3', 'C4', 'C5'],
+      'Dodge': ['Avenger', 'Caliber', 'Caravan', 'Challenger', 'Charger', 'Dart', 'Durango', 'Grand Caravan', 'Intrepid', 'Journey', 'Magnum', 'Neon', 'Nitro', 'Ram', 'Shadow', 'Spirit', 'Stealth', 'Stratus', 'Viper'],
+      'Ferrari': ['296', '488', '812', 'California', 'F8', 'FF', 'F12', 'GTC4Lusso', 'LaFerrari', 'Portofino', 'Roma', 'SF90'],
+      'Fiat': ['500', '500L', '500X', '124 Spider'],
+      'Ford': ['Bronco', 'Bronco Sport', 'C-Max', 'Contour', 'Crown Victoria', 'EcoSport', 'Edge', 'Escape', 'Expedition', 'Explorer', 'F-150', 'F-250', 'F-350', 'F-450', 'F-550', 'Fiesta', 'Five Hundred', 'Flex', 'Focus', 'Fusion', 'Galaxy', 'GT', 'Ka', 'Kuga', 'Maverick', 'Mondeo', 'Mustang', 'Puma', 'Ranger', 'S-Max', 'Taurus', 'Thunderbird', 'Transit', 'Windstar'],
+      'Genesis': ['G70', 'G80', 'G90', 'GV60', 'GV70', 'GV80'],
+      'GMC': ['Acadia', 'Canyon', 'Envoy', 'Hummer H1', 'Hummer H2', 'Hummer H3', 'Jimmy', 'Safari', 'Savana', 'Sierra', 'Sonoma', 'Terrain', 'Yukon'],
+      'Honda': ['Accord', 'Civic', 'Clarity', 'CR-V', 'CR-Z', 'Element', 'Fit', 'HR-V', 'Insight', 'Odyssey', 'Passport', 'Pilot', 'Prelude', 'Ridgeline', 'S2000'],
+      'Hyundai': ['Accent', 'Azera', 'Elantra', 'Entourage', 'Equus', 'Genesis', 'Ioniq', 'Kona', 'Nexo', 'Palisade', 'Santa Cruz', 'Santa Fe', 'Sonata', 'Tiburon', 'Tucson', 'Veloster', 'Venue', 'Veracruz', 'XG'],
+      'Infiniti': ['EX', 'FX', 'G', 'I', 'J', 'JX', 'M', 'Q30', 'Q40', 'Q50', 'Q60', 'Q70', 'QX30', 'QX50', 'QX55', 'QX60', 'QX70', 'QX80'],
+      'Jaguar': ['E-Pace', 'F-Pace', 'F-Type', 'I-Pace', 'S-Type', 'X-Type', 'XE', 'XF', 'XJ', 'XK'],
+      'Jeep': ['Cherokee', 'Compass', 'Gladiator', 'Grand Cherokee', 'Liberty', 'Patriot', 'Renegade', 'Wrangler'],
+      'Kia': ['Amanti', 'Borrego', 'Cadenza', 'Carens', 'Ceed', 'Cerato', 'Forte', 'K5', 'K900', 'Magentis', 'Mohave', 'Niro', 'Optima', 'Picanto', 'ProCeed', 'Rio', 'Sedana', 'Seltos', 'Sorento', 'Soul', 'Spectra', 'Sportage', 'Stinger', 'Telluride'],
+      'Lamborghini': ['Aventador', 'Countach', 'Diablo', 'Gallardo', 'Huracan', 'Murcielago', 'Reventon', 'Urus', 'Veneno'],
+      'Land Rover': ['Defender', 'Discovery', 'Discovery Sport', 'Evoque', 'Freelander', 'LR2', 'LR3', 'LR4', 'Range Rover', 'Range Rover Sport', 'Range Rover Velar'],
+      'Lexus': ['CT', 'ES', 'GS', 'HS', 'IS', 'LC', 'LFA', 'LS', 'LX', 'NX', 'RC', 'RX', 'SC', 'UX'],
+      'Lincoln': ['Aviator', 'Blackwood', 'Continental', 'Corsair', 'LS', 'Mark LT', 'Mark VIII', 'MKC', 'MKS', 'MKT', 'MKX', 'MKZ', 'Navigator', 'Town Car', 'Zephyr'],
+      'Lotus': ['Elise', 'Europa', 'Evora', 'Exige'],
+      'Maserati': ['Ghibli', 'GranTurismo', 'Levante', 'MC20', 'Quattroporte'],
+      'Mazda': ['2', '3', '5', '6', 'CX-3', 'CX-30', 'CX-5', 'CX-7', 'CX-9', 'MX-30', 'MX-5', 'MX-6', 'Protege', 'RX-7', 'RX-8', 'Tribute'],
+      'McLaren': ['540C', '570S', '600LT', '650S', '675LT', '720S', '750S', '765LT', 'Artura', 'F1', 'GT', 'P1', 'Senna'],
+      'Mercedes-Benz': ['A-Class', 'B-Class', 'C-Class', 'CLA', 'CLS', 'E-Class', 'G-Class', 'GLA', 'GLB', 'GLC', 'GLE', 'GLK', 'GLS', 'M-Class', 'R-Class', 'S-Class', 'SL', 'SLC', 'SLK', 'SLS', 'Sprinter', 'V-Class'],
+      'MINI': ['Clubman', 'Countryman', 'Coupe', 'Hardtop', 'Paceman', 'Roadster'],
+      'Mitsubishi': ['3000GT', 'Diamante', 'Eclipse', 'Endeavor', 'Galant', 'i-MiEV', 'Lancer', 'Mirage', 'Montero', 'Outlander', 'Pajero', 'Raider'],
+      'Nissan': ['350Z', '370Z', 'Altima', 'Armada', 'Frontier', 'GT-R', 'Juke', 'Leaf', 'Maxima', 'Murano', 'NV', 'Pathfinder', 'Quest', 'Rogue', 'Sentra', 'Titan', 'Versa', 'Xterra'],
+      'Oldsmobile': ['Alero', 'Aurora', 'Bravada', 'Cutlass', 'Intrigue', 'Silhouette'],
+      'Peugeot': ['2008', '3008', '5008', '508'],
+      'Pontiac': ['Aztek', 'Bonneville', 'Firebird', 'G3', 'G5', 'G6', 'G8', 'Grand Am', 'Grand Prix', 'GTO', 'Montana', 'Solstice', 'Sunfire', 'Torrent', 'Vibe'],
+      'Porsche': ['911', '918', '924', '928', '944', '968', 'Boxster', 'Cayenne', 'Cayman', 'Macan', 'Panamera', 'Taycan'],
+      'Ram': ['1500', '2500', '3500', 'ProMaster', 'ProMaster City'],
+      'Renault': ['Clio', 'Megane', 'Zoe'],
+      'Rolls-Royce': ['Cullinan', 'Dawn', 'Ghost', 'Phantom', 'Wraith'],
+      'Saab': ['9-3', '9-5', '9-7X'],
+      'Saturn': ['Aura', 'Ion', 'Outlook', 'Relay', 'Sky', 'Vue'],
+      'Scion': ['FR-S', 'iA', 'iM', 'iQ', 'tC', 'xA', 'xB', 'xD'],
+      'Subaru': ['Ascent', 'BRZ', 'Crosstrek', 'Forester', 'Impreza', 'Legacy', 'Outback', 'SVX', 'Tribeca', 'WRX', 'XV'],
+      'Suzuki': ['Aerio', 'Equator', 'Forenza', 'Grand Vitara', 'Kizashi', 'Reno', 'SX4', 'Verona', 'XL-7'],
+      'Tesla': ['Model 3', 'Model S', 'Model X', 'Model Y', 'Roadster'],
+      'Toyota': ['4Runner', '86', 'Avalon', 'Camry', 'Celica', 'Corolla', 'Cressida', 'Echo', 'FJ Cruiser', 'Highlander', 'Land Cruiser', 'Matrix', 'MR2', 'Paseo', 'Previa', 'Prius', 'Prius C', 'Prius V', 'RAV4', 'Sequoia', 'Sienna', 'Solara', 'Supra', 'Tacoma', 'Tercel', 'Tundra', 'Venza', 'Yaris'],
+      'Volkswagen': ['Arteon', 'Atlas', 'Beetle', 'CC', 'Eos', 'Golf', 'GTI', 'Jetta', 'Passat', 'Phaeton', 'Polo', 'Routan', 'Scirocco', 'Tiguan', 'Touareg', 'Touran'],
+      'Volvo': ['C30', 'C70', 'S40', 'S60', 'S70', 'S80', 'S90', 'V40', 'V50', 'V60', 'V70', 'V90', 'XC40', 'XC60', 'XC70', 'XC90']
+    };
+
+    // Try to read custom vehicles
+    let customVehicles = { makes: [], models: {} };
+    try {
+      const customData = await fs.readFile(customVehiclesPath, 'utf8');
+      customVehicles = JSON.parse(customData);
+    } catch (error) {
+      // File doesn't exist, use empty structure
+    }
+
+    // Combine default and custom makes
+    const allMakes = [...new Set([...defaultMakes, ...customVehicles.makes])].sort();
+
+    // Combine default and custom models
+    const allModels = { ...defaultModels };
+    Object.keys(customVehicles.models).forEach(make => {
+      if (!allModels[make]) {
+        allModels[make] = [];
+      }
+      allModels[make] = [...new Set([...allModels[make], ...customVehicles.models[make]])].sort();
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        makes: allMakes,
+        models: allModels
+      }
+    });
+  } catch (error) {
+    console.error('Error getting vehicle makes and models:', error);
     res.status(500).json({
       success: false,
       error: error.message

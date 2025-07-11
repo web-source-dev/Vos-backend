@@ -94,35 +94,7 @@ const TransactionSchema = new mongoose.Schema({
     witnessName: String,
     witnessPhone: String
   },
-  bankDetails: {
-    accountHolderName: String,
-    routingNumber: String,
-    accountNumber: String,
-    accountType: {
-      type: String,
-      enum: ['checking', 'savings'],
-      default: 'checking'
-    },
-    bankName: String,
-    bankPhone: String,
-    accountOpenedDate: Date,
-    electronicConsentAgreed: {
-      type: Boolean,
-      default: false
-    }
-  },
-  taxInfo: {
-    ssn: String,
-    taxId: String,
-    reportedIncome: {
-      type: Boolean,
-      default: false
-    },
-    form1099Agreed: {
-      type: Boolean,
-      default: false
-    }
-  },
+  preferredPaymentMethod: { type: String, default: 'Wire' },
   documents: {
     idRescan: String,
     signedBillOfSale: String,

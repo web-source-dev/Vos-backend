@@ -66,6 +66,18 @@ const QuoteSchema = new mongoose.Schema({
     decisionDate: Date,
     reason: String
   },
+  // OBD2 scan data
+  obd2Scan: {
+    scanDate: Date,
+    filePath: String,
+    extractedCodes: [String],
+    criticalCodes: [{
+      code: String,
+      description: String,
+      criticality: Number,
+      estimatedRepairCost: String
+    }]
+  },
   emailSent: {
     type: Boolean,
     default: false

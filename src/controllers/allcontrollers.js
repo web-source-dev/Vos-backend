@@ -1559,11 +1559,13 @@ exports.updateOfferDecisionByCaseId = async (req, res) => {
 
     console.log('updateOfferDecisionByCaseId called with caseId:', caseId);
     console.log('offerDecision:', offerDecision);
+    console.log('User:', req.user ? { id: req.user.id, role: req.user.role } : 'No user');
 
     // Find the case and its quote
     const caseData = await Case.findById(caseId).populate('quote');
     
     if (!caseData) {
+      console.log('Case not found for ID:', caseId);
       return res.status(404).json({
         success: false,
         error: 'Case not found'
@@ -1571,11 +1573,14 @@ exports.updateOfferDecisionByCaseId = async (req, res) => {
     }
 
     if (!caseData.quote) {
+      console.log('No quote found for case:', caseId);
       return res.status(404).json({
         success: false,
         error: 'No quote found for this case'
       });
     }
+
+    console.log('Case and quote found successfully');
 
     // Update the quote with offer decision
     const updatedQuote = await Quote.findByIdAndUpdate(
@@ -1593,11 +1598,14 @@ exports.updateOfferDecisionByCaseId = async (req, res) => {
      .populate('inspection');
 
     if (!updatedQuote) {
+      console.log('Quote update failed');
       return res.status(404).json({
         success: false,
         error: 'Quote not found'
       });
     }
+
+    console.log('Quote updated successfully');
 
     // Don't automatically advance stages - let the frontend manage stage progression
     // The frontend will call updateCaseStageByCaseId separately to manage stage status
@@ -1607,6 +1615,7 @@ exports.updateOfferDecisionByCaseId = async (req, res) => {
         caseId,
         { status: 'closed' }
       );
+      console.log('Case marked as closed due to declined offer');
     }
 
     console.log('Offer decision updated successfully');
@@ -2041,6 +2050,58 @@ exports.generateBillOfSalePDF = async (req, res) => {
     res.sendFile(pdfResult.filePath);
   } catch (error) {
     console.error('Generate Bill of Sale PDF error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Generate Quote Summary PDF
+exports.generateQuoteSummary = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+    const { quoteData } = req.body; // Get quote data from request body
+
+    const caseData = await Case.findById(caseId)
+      .populate('customer')
+      .populate('vehicle')
+      .populate('inspection')
+      .populate('quote')
+      .populate('transaction');
+
+    if (!caseData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
+
+    // If quote data is provided, merge it with the case data
+    if (quoteData) {
+      // Ensure proper type conversion for numeric fields
+      const processedQuoteData = {
+        ...quoteData,
+        offerAmount: quoteData.offerAmount !== undefined ? Number(quoteData.offerAmount) : undefined,
+        estimatedValue: quoteData.estimatedValue !== undefined ? Number(quoteData.estimatedValue) : undefined
+      };
+      caseData.quote = {
+        ...caseData.quote,
+        ...processedQuoteData
+      };
+    }
+
+    // Generate Quote Summary PDF
+    const pdfResult = await pdfService.generateQuoteSummaryPDF(caseData);
+
+    // Set appropriate headers for PDF download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="quote-summary-${caseId}.pdf"`);
+
+    // Send the PDF file
+    res.sendFile(pdfResult.filePath);
+  } catch (error) {
+    console.error('Generate Quote Summary PDF error:', error);
     res.status(500).json({
       success: false,
       error: error.message

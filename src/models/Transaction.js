@@ -96,12 +96,7 @@ const TransactionSchema = new mongoose.Schema({
   },
   preferredPaymentMethod: { type: String, default: 'Wire' },
   documents: {
-    idRescan: String,
     signedBillOfSale: String,
-    titlePhoto: String,
-    insuranceDeclaration: String,
-    sellerSignature: String,
-    additionalDocuments: [String]
   },
   paymentStatus: {
     type: String,

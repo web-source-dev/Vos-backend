@@ -108,9 +108,11 @@ app.use('/files', (req, res, next) => {
 // Import routes
 const authRoutes = require('./routes/auth');
 const allRoutes = require('./routes/allroutes');
+const obd2Routes = require('./routes/obd2');
 
 // Mount routes
 app.use('/api/auth', authRoutes);
+app.use('/api/obd2', obd2Routes);
 app.use('/api', allRoutes);
 
 // Basic route

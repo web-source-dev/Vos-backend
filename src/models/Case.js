@@ -129,7 +129,11 @@ const CaseSchema = new mongoose.Schema({
       type: Boolean,
       default: false
     },
-    completedAt: Date
+    completedAt: Date,
+    titleConfirmation: {
+      type: Boolean,
+      default: false
+    }
   },
   lastActivity: {
     description: String,

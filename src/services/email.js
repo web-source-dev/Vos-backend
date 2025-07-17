@@ -767,6 +767,89 @@ Note: This customer intake was submitted through the public form and requires ag
   }
 }
 
+/**
+ * Send customer intake form email
+ * @param {String} customerEmail - Customer's email address
+ * @param {String} customerName - Customer's name
+ * @param {String} formUrl - URL to the customer intake form
+ * @returns {Promise} - Promise resolving to the email info
+ */
+const sendCustomerFormEmail = async (customerEmail, customerName, formUrl) => {
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || '"VOS System" <no-reply@vossystem.com>',
+    to: customerEmail,
+    subject: 'Complete Your Vehicle Information - VOS',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #3b82f6;">Complete Your Vehicle Information</h2>
+        <p>Hello ${customerName},</p>
+        <p>Thank you for your interest in selling your vehicle to VOS. To help us provide you with the best possible offer, we need some additional information about your vehicle.</p>
+        
+        <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">What you'll need to provide:</h3>
+          <ul style="color: #4b5563; line-height: 1.6;">
+            <li>Vehicle details (year, make, model, mileage)</li>
+            <li>VIN number (if available)</li>
+            <li>Vehicle condition and known issues</li>
+            <li>Title and loan information</li>
+            <li>Contact information</li>
+          </ul>
+        </div>
+        
+        <p>Please click the button below to access our secure online form:</p>
+        
+        <p style="margin: 30px 0;">
+          <a href="${formUrl}" style="background: #3b82f6; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; font-size: 16px;">
+            Complete Vehicle Form
+          </a>
+        </p>
+        
+        <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">
+          <strong>Important:</strong> This form should take about 5-10 minutes to complete. You can save your progress and return later if needed.
+        </p>
+        
+        <div style="background: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+          <p style="margin: 0; color: #1e40af; font-size: 14px;">
+            <strong>Need help?</strong> If you have any questions or need assistance completing the form, please don't hesitate to contact us at (555) 123-4567 or reply to this email.
+          </p>
+        </div>
+        
+        <p>We look forward to helping you get the best value for your vehicle!</p>
+        <p>Best regards,<br>The VOS Team</p>
+      </div>
+    `
+  };
+
+  try {
+    // For development, create a test account if needed
+    if (process.env.NODE_ENV !== 'production' && 
+        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
+      const testAccount = await nodemailer.createTestAccount();
+      transporter = nodemailer.createTransport({
+        host: 'smtp.ethereal.email',
+        port: 587,
+        secure: false,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass,
+        },
+      });
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    
+    // In development, log the Ethereal URL to view the email
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Customer Form Email URL: %s', nodemailer.getTestMessageUrl(info));
+    }
+    
+    return info;
+  } catch (error) {
+    console.error('Error sending customer form email:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   sendCustomerIntakeNotification,
   sendInspectionEmail,
@@ -774,5 +857,6 @@ module.exports = {
   sendCustomerConfirmationEmail,
   sendQuoteUpdateEmail,
   sendNegotiationUpdateEmail,
-  sendInspectionCompletedEmail
+  sendInspectionCompletedEmail,
+  sendCustomerFormEmail
 }; 

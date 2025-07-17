@@ -4,8 +4,15 @@ const path = require('path');
 const pdfParse = require('pdf-parse');
 
 // Regular expression to find OBD2 codes in text
-// Most common format is a letter followed by 4 digits (e.g., P0301)
-const OBD2_CODE_REGEX = /([PBCU][0-9]{4})/gi;
+// Enhanced regex to catch more variations of OBD2 codes
+// Matches: P0121, P0121, P0121, P0121, etc.
+// Also matches codes with spaces, dashes, or other separators
+// Updated to be more flexible and catch various formats including:
+// - P0121, P0121, P0121, P0121
+// - P 0121, P-0121, P_0121
+// - Codes with leading zeros: P0001, P0012
+// - Codes in various text contexts
+const OBD2_CODE_REGEX = /([PBCU][\s\-_]?[0-9]{4})/gi;
 
 /**
  * Get all OBD2 codes
@@ -244,11 +251,20 @@ exports.parseOBD2PDF = async (req, res) => {
     const pdfData = await pdfParse(dataBuffer);
     const pdfText = pdfData.text;
 
+    console.log('=== OBD2 PDF Parsing Debug (parseOBD2PDF) ===');
+    console.log('PDF Text extracted (first 500 chars):', pdfText.substring(0, 500));
+    console.log('PDF Text length:', pdfText.length);
+
     // Extract OBD2 codes
     const codes = pdfText.match(OBD2_CODE_REGEX) || [];
+    console.log('Raw extracted codes:', codes);
     
-    // Remove duplicates and convert to uppercase
-    const uniqueCodes = [...new Set(codes.map(code => code.toUpperCase()))];
+    // Clean and normalize codes, then remove duplicates
+    const uniqueCodes = [...new Set(codes.map(code => {
+      // Remove any spaces, dashes, or other separators and convert to uppercase
+      return code.replace(/[\s\-_]/g, '').toUpperCase();
+    }))];
+    console.log('Cleaned unique codes:', uniqueCodes);
     
     // Find these codes in the database
     const matchingCodes = await OBD2Code.find({
@@ -325,11 +341,20 @@ exports.uploadOBD2ScanToCase = async (req, res) => {
     const pdfData = await pdfParse(dataBuffer);
     const pdfText = pdfData.text;
 
+    console.log('=== OBD2 PDF Parsing Debug (uploadOBD2ScanToCase) ===');
+    console.log('PDF Text extracted (first 500 chars):', pdfText.substring(0, 500));
+    console.log('PDF Text length:', pdfText.length);
+
     // Extract OBD2 codes
     const codes = pdfText.match(OBD2_CODE_REGEX) || [];
+    console.log('Raw extracted codes:', codes);
     
-    // Remove duplicates and convert to uppercase
-    const uniqueCodes = [...new Set(codes.map(code => code.toUpperCase()))];
+    // Clean and normalize codes, then remove duplicates
+    const uniqueCodes = [...new Set(codes.map(code => {
+      // Remove any spaces, dashes, or other separators and convert to uppercase
+      return code.replace(/[\s\-_]/g, '').toUpperCase();
+    }))];
+    console.log('Cleaned unique codes:', uniqueCodes);
     
     // Find these codes in the database
     const matchingCodes = await OBD2Code.find({

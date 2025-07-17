@@ -43,7 +43,8 @@ const {
   getAnalytics,
   saveCustomVehicle,
   getVehicleMakesAndModels,
-  generateQuoteSummary
+  generateQuoteSummary,
+  sendCustomerFormEmail
 } = require('../controllers/allcontrollers');
 
 // Import OBD2 controllers
@@ -70,6 +71,9 @@ router.post('/cases/:caseId/obd2-scan', protect, uploadOBD2ScanToCase);
 
 // Customer intake route (public - no authentication required)
 router.post('/customer-intake', customerIntake);
+
+// Send customer form email (protected - requires authentication)
+router.post('/send-customer-form', sendCustomerFormEmail);
 
 // Inspection scheduling (protected)
 router.post('/cases/:caseId/inspection', protect, scheduleInspection);

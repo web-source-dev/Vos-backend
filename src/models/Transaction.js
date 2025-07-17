@@ -95,6 +95,11 @@ const TransactionSchema = new mongoose.Schema({
     witnessPhone: String
   },
   preferredPaymentMethod: { type: String, default: 'Wire' },
+  bankDetails: {
+    bankName: String,
+    loanNumber: String,
+    payoffAmount: Number
+  },
   documents: {
     signedBillOfSale: String,
   },

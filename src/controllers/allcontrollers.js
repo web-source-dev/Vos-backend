@@ -2420,7 +2420,8 @@ exports.saveCompletionData = async (req, res) => {
             documentsReceived: completionData.leaveBehinds?.documentsReceived || false
           },
           pdfGenerated: completionData.pdfGenerated || false,
-          completedAt: completionData.completedAt || new Date()
+          completedAt: completionData.completedAt || new Date(),
+          titleConfirmation: completionData.titleConfirmation || false
         },
         status: 'completed',
         currentStage: 7,
@@ -2993,6 +2994,49 @@ exports.getVehicleMakesAndModels = async (req, res) => {
     });
   } catch (error) {
     console.error('Error getting vehicle makes and models:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Send customer intake form email
+exports.sendCustomerFormEmail = async (req, res) => {
+  try {
+    const { customerEmail, customerName } = req.body;
+
+    if (!customerEmail || !customerName) {
+      return res.status(400).json({
+        success: false,
+        error: 'Customer email and name are required'
+      });
+    }
+
+    // Generate a unique form URL (you could add a token for tracking)
+    const formUrl = `${process.env.BASE_URL || 'http://localhost:3000'}/customer-intake`;
+    
+    // Send email with form link
+    try {
+      await emailService.sendCustomerFormEmail(customerEmail, customerName, formUrl);
+      
+      res.status(200).json({
+        success: true,
+        data: {
+          emailSent: true,
+          formUrl: formUrl,
+          message: 'Customer form email sent successfully'
+        }
+      });
+    } catch (emailError) {
+      console.error('Error sending customer form email:', emailError);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to send email'
+      });
+    }
+  } catch (error) {
+    console.error('Send customer form email error:', error);
     res.status(500).json({
       success: false,
       error: error.message

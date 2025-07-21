@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect, isAdmin, isAgent, isEstimator, isInspector, isAdminOrAgent, isEstimatorDebug, isQuoteManager, isUserManager } = require('../middleware/auth');
+const updateStageTime = require('../services/updateStageTime');
 const {
   createCase,
   updateCase,
@@ -44,7 +45,9 @@ const {
   saveCustomVehicle,
   getVehicleMakesAndModels,
   generateQuoteSummary,
-  sendCustomerFormEmail
+  sendCustomerFormEmail,
+  getTimeTrackingByCaseId,
+  getTimeTrackingAnalytics,
 } = require('../controllers/allcontrollers');
 
 // Import OBD2 controllers
@@ -130,5 +133,20 @@ router.post('/vehicle/custom', protect, saveCustomVehicle);
 
 // Analytics
 router.get('/analytics', protect, isAdmin, getAnalytics);
+
+// Time tracking endpoints
+router.get('/cases/:caseId/time-tracking', protect, getTimeTrackingByCaseId);
+router.get('/time-tracking/analytics', protect, isAdmin, getTimeTrackingAnalytics);
+
+router.post('/stage-time', protect, async (req, res) => {
+  try {
+    const { caseId, stageName, startTime, endTime, extraFields } = req.body;
+    await updateStageTime(caseId, stageName, new Date(startTime), new Date(endTime), extraFields || {});
+    res.status(200).json({ message: 'Stage time updated successfully' });
+  } catch (error) {
+    console.error('Error updating stage time:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
 
 module.exports = router;

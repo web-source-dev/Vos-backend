@@ -4,6 +4,7 @@ const Vehicle = require('../models/Vehicle');
 const Inspection = require('../models/Inspection');
 const Quote = require('../models/Quote');
 const Transaction = require('../models/Transaction');
+const TimeTracking = require('../models/TimeTracking');
 const emailService = require('../services/email');
 const pdfService = require('../services/pdf');
 const User = require('../models/User');
@@ -374,26 +375,34 @@ exports.getInspectionByToken = async (req, res) => {
       });
     }
 
-    console.log('Inspection retrieved:', {
-      id: inspection._id,
-      sectionsCount: inspection.sections?.length || 0,
-      overallRating: inspection.overallRating,
-      completed: inspection.completed
-    });
+    // Fetch the related case to get the caseId
+    const caseDoc = await Case.findOne({ inspection: inspection._id });
+    let caseId = caseDoc ? caseDoc._id : null;
 
-    if (inspection.sections && inspection.sections.length > 0) {
-      inspection.sections.forEach((section, index) => {
-        console.log(`Section ${index + 1}: ${section.name}`, {
-          questionsCount: section.questions?.length || 0,
-          rating: section.rating,
-          score: section.score,
-        });
-      });
+    // Inspector info
+    let inspectorId = null;
+    let inspectorName = null;
+    if (inspection.inspector && inspection.inspector.firstName && inspection.inspector.lastName) {
+      inspectorName = `${inspection.inspector.firstName} ${inspection.inspector.lastName}`;
     }
+    // Look up inspectorId by email if available
+    if (inspection.inspector && inspection.inspector.email) {
+      const inspectorUser = await User.findOne({ email: inspection.inspector.email });
+      if (inspectorUser) {
+        inspectorId = inspectorUser._id;
+      }
+    }
+
+    console.log('inspectorId', inspection.inspector);
 
     res.status(200).json({
       success: true,
-      data: inspection
+      data: {
+        ...inspection.toObject(),
+        caseId,
+        inspectorId: inspectorId, // You can enhance this if you want to look up the User by email
+        inspectorName
+      }
     });
   } catch (error) {
     console.error('Error retrieving inspection:', error);
@@ -3014,7 +3023,7 @@ exports.sendCustomerFormEmail = async (req, res) => {
     }
 
     // Generate a unique form URL (you could add a token for tracking)
-    const formUrl = `${process.env.BASE_URL || 'http://localhost:3000'}/customer-intake`;
+    const formUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/customer-intake`;
     
     // Send email with form link
     try {
@@ -3041,5 +3050,47 @@ exports.sendCustomerFormEmail = async (req, res) => {
       success: false,
       error: error.message
     });
+  }
+};
+
+// Get time tracking for a specific case
+exports.getTimeTrackingByCaseId = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+    const timeTracking = await TimeTracking.findOne({ caseId });
+    if (!timeTracking) {
+      return res.status(404).json({ success: false, error: 'No time tracking found for this case' });
+    }
+    res.status(200).json({ success: true, data: timeTracking });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// Get analytics for all cases' time tracking
+exports.getTimeTrackingAnalytics = async (req, res) => {
+  try {
+    const all = await TimeTracking.find({});
+    if (!all.length) return res.status(200).json({ success: true, data: { stageAverages: {}, totalCases: 0 } });
+    const stageNames = Object.keys(all[0].stageTimes || {});
+    const stageTotals = {};
+    const stageCounts = {};
+    stageNames.forEach(stage => { stageTotals[stage] = 0; stageCounts[stage] = 0; });
+    all.forEach(tt => {
+      stageNames.forEach(stage => {
+        const t = tt.stageTimes[stage];
+        if (t && t.totalTime) {
+          stageTotals[stage] += t.totalTime;
+          stageCounts[stage] += 1;
+        }
+      });
+    });
+    const stageAverages = {};
+    stageNames.forEach(stage => {
+      stageAverages[stage] = stageCounts[stage] ? stageTotals[stage] / stageCounts[stage] : 0;
+    });
+    res.status(200).json({ success: true, data: { stageAverages, totalCases: all.length } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 };

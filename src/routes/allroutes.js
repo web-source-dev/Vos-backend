@@ -48,6 +48,7 @@ const {
   sendCustomerFormEmail,
   getTimeTrackingByCaseId,
   getTimeTrackingAnalytics,
+  confirmPayoff,
 } = require('../controllers/allcontrollers');
 
 // Import OBD2 controllers
@@ -101,6 +102,9 @@ router.post('/upload', protect, uploadDocument);
 // Paperwork routes
 router.post('/quote/:token/paperwork', updatePaperwork);
 router.post('/cases/:caseId/paperwork', protect, isQuoteManager, savePaperworkByCaseId);
+
+// Payoff confirmation route
+router.post('/cases/:caseId/payoff-confirmation', protect, confirmPayoff);
 
 // Case stage updates
 router.post('/quote/:token/stage', updateCaseStage);

@@ -100,6 +100,19 @@ const TransactionSchema = new mongoose.Schema({
     loanNumber: String,
     payoffAmount: Number
   },
+  // Payoff confirmation fields
+  payoffStatus: {
+    type: String,
+    enum: ['pending', 'confirmed', 'completed', 'not_required'],
+    default: 'not_required'
+  },
+  payoffConfirmedAt: Date,
+  payoffCompletedAt: Date,
+  payoffConfirmedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  payoffNotes: String,
   documents: {
     signedBillOfSale: String,
   },

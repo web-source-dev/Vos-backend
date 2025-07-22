@@ -3094,3 +3094,113 @@ exports.getTimeTrackingAnalytics = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+// Confirm payoff for a transaction
+exports.confirmPayoff = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+    const { payoffStatus, payoffNotes } = req.body;
+
+    console.log('=== confirmPayoff START ===');
+    console.log('caseId:', caseId);
+    console.log('User:', req.user.id, req.user.role);
+    console.log('payoffStatus:', payoffStatus);
+    console.log('payoffNotes:', payoffNotes);
+
+    // Validate caseId format
+    if (!caseId || caseId.length !== 24) {
+      console.log('Invalid case ID format:', caseId);
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid case ID format'
+      });
+    }
+
+    // Find the case
+    const caseData = await Case.findById(caseId)
+      .populate('customer')
+      .populate('vehicle')
+      .populate('quote')
+      .populate('transaction');
+    
+    if (!caseData) {
+      console.log('Case not found for ID:', caseId);
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
+
+    if (!caseData.transaction) {
+      console.log('No transaction found for case:', caseId);
+      return res.status(404).json({
+        success: false,
+        error: 'No transaction found for this case'
+      });
+    }
+
+    // Update transaction with payoff confirmation
+    const updateData = {
+      payoffStatus: payoffStatus,
+      payoffNotes: payoffNotes || '',
+      payoffConfirmedBy: req.user.id
+    };
+
+    // Set timestamps based on status
+    if (payoffStatus === 'confirmed') {
+      updateData.payoffConfirmedAt = new Date();
+    } else if (payoffStatus === 'completed') {
+      updateData.payoffCompletedAt = new Date();
+      // If not already confirmed, set confirmed timestamp too
+      if (!caseData.transaction.payoffConfirmedAt) {
+        updateData.payoffConfirmedAt = new Date();
+      }
+    }
+
+    const updatedTransaction = await Transaction.findByIdAndUpdate(
+      caseData.transaction._id,
+      updateData,
+      { new: true }
+    );
+
+    if (!updatedTransaction) {
+      console.log('Failed to update transaction');
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update transaction'
+      });
+    }
+
+    console.log('Transaction updated successfully:', updatedTransaction._id);
+
+    // Update case with updated transaction
+    const updatedCase = await Case.findByIdAndUpdate(
+      caseId,
+      {
+        transaction: updatedTransaction._id
+      },
+      { new: true }
+    ).populate('customer')
+     .populate('vehicle')
+     .populate('quote')
+     .populate('transaction');
+
+    console.log('=== confirmPayoff SUCCESS ===');
+
+    res.status(200).json({
+      success: true,
+      data: {
+        case: updatedCase,
+        transaction: updatedTransaction
+      }
+    });
+  } catch (error) {
+    console.error('=== confirmPayoff ERROR ===');
+    console.error('Error confirming payoff:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};

@@ -191,7 +191,7 @@ exports.createCase = async (req, res) => {
     const newCase = await Case.create({
       customer: customer._id,
       vehicle: vehicle._id,
-      currentStage: 1,
+      currentStage: 2,
       status: 'new',
       createdBy: req.user.id,
       documents: {
@@ -991,7 +991,7 @@ exports.completeCase = async (req, res) => {
         pdfCaseFile: pdfResult.filePath,
         currentStage: 7,
         'stageStatuses.6': 'complete',
-        'stageStatuses.7': 'active',
+        'stageStatuses.7': 'complete',
         status: 'completed',
         thankYouSent: true
       },

@@ -12,7 +12,8 @@ const TimeTracking = require('../models/TimeTracking'); // adjust path if needed
  * @param {Object} extraFields - Optional. Additional fields like inspectorId or inspectorName.
  */
 async function updateStageTime(caseId, stageName, startTime, endTime, extraFields = {}) {
-  const totalTime = endTime - startTime;
+  // Use the totalTime from extraFields if provided, otherwise calculate from start/end
+  const totalTime = extraFields.totalTime || (endTime - startTime);
 
   const stageUpdate = {
     [`stageTimes.${stageName}.startTime`]: startTime,
@@ -24,15 +25,39 @@ async function updateStageTime(caseId, stageName, startTime, endTime, extraField
     }, {})
   };
 
-  await TimeTracking.findOneAndUpdate(
-    { caseId },
-    {
-      $set: stageUpdate,
-      $inc: { totalTime },
-      $currentDate: { lastUpdated: true }
-    },
-    { new: true, upsert: true }
-  );
+  // Get existing document to calculate the correct total time
+  const existingDoc = await TimeTracking.findOne({ caseId });
+  
+  if (existingDoc) {
+    // Calculate the new total by replacing the old stage time with the new total time
+    const oldStageTime = existingDoc.stageTimes[stageName]?.totalTime || 0;
+    const newTotalTime = existingDoc.totalTime - oldStageTime + totalTime;
+    
+    await TimeTracking.findOneAndUpdate(
+      { caseId },
+      {
+        $set: {
+          ...stageUpdate,
+          totalTime: newTotalTime
+        },
+        $currentDate: { lastUpdated: true }
+      },
+      { new: true, upsert: true }
+    );
+  } else {
+    // If no existing document, create new one with the total time
+    await TimeTracking.findOneAndUpdate(
+      { caseId },
+      {
+        $set: {
+          ...stageUpdate,
+          totalTime: totalTime
+        },
+        $currentDate: { lastUpdated: true }
+      },
+      { new: true, upsert: true }
+    );
+  }
 }
 
 module.exports = updateStageTime;

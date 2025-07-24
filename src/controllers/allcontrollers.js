@@ -296,6 +296,60 @@ exports.updateCase = async (req, res) => {
   }
 };
 
+// Delete a case and all related data
+exports.deleteCase = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+    // Find the case and populate all references
+    const caseData = await Case.findById(caseId)
+      .populate('customer')
+      .populate('vehicle')
+      .populate('inspection')
+      .populate('quote')
+      .populate('transaction');
+
+    if (!caseData) {
+      return res.status(404).json({ success: false, error: 'Case not found' });
+    }
+
+    // Delete TimeTracking
+    await TimeTracking.deleteOne({ caseId: caseData._id });
+
+    // Delete Quote (and any OBD2 scan data inside it)
+    if (caseData.quote) {
+      await Quote.findByIdAndDelete(caseData.quote._id || caseData.quote);
+    }
+
+    // Delete Inspection
+    if (caseData.inspection) {
+      await Inspection.findByIdAndDelete(caseData.inspection._id || caseData.inspection);
+    }
+
+    // Delete Transaction
+    if (caseData.transaction) {
+      await Transaction.findByIdAndDelete(caseData.transaction._id || caseData.transaction);
+    }
+
+    // Delete Vehicle
+    if (caseData.vehicle) {
+      await Vehicle.findByIdAndDelete(caseData.vehicle._id || caseData.vehicle);
+    }
+
+    // Delete Customer
+    if (caseData.customer) {
+      await Customer.findByIdAndDelete(caseData.customer._id || caseData.customer);
+    }
+
+    // Finally, delete the Case itself
+    await Case.findByIdAndDelete(caseId);
+
+    res.status(200).json({ success: true, message: 'Case and all related data deleted successfully.' });
+  } catch (error) {
+    console.error('Error deleting case and related data:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 // Schedule inspection and assign inspector
 exports.scheduleInspection = async (req, res) => {
   try {

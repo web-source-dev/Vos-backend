@@ -49,6 +49,7 @@ const {
   getTimeTrackingByCaseId,
   getTimeTrackingAnalytics,
   confirmPayoff,
+  deleteCase,
 } = require('../controllers/allcontrollers');
 
 // Import OBD2 controllers
@@ -69,6 +70,7 @@ router.get('/cases', protect, getCases);
 router.get('/cases/:caseId', protect, getCase);
 router.post('/cases', protect, createCase);
 router.put('/cases/:caseId', protect, updateCase);
+router.delete('/cases/:caseId', protect, deleteCase);
 
 // OBD2 scan upload for a specific case
 router.post('/cases/:caseId/obd2-scan', protect, uploadOBD2ScanToCase);

@@ -789,6 +789,22 @@ exports.submitQuote = async (req, res) => {
     const { id } = req.params;
     const quoteData = req.body;
 
+    // First check if quote exists and if it has already been decided
+    const existingQuote = await Quote.findOne({ accessToken: id });
+    if (existingQuote) {
+      const isQuoteDecided = existingQuote.offerDecision?.decision === 'accepted' || 
+                            existingQuote.offerDecision?.decision === 'declined' ||
+                            existingQuote.status === 'accepted' || 
+                            existingQuote.status === 'declined';
+      
+      if (isQuoteDecided) {
+        return res.status(400).json({
+          success: false,
+          error: `Quote has already been ${existingQuote.offerDecision?.decision || existingQuote.status}. Cannot modify a quote that has been decided.`
+        });
+      }
+    }
+
     const quote = await Quote.findOneAndUpdate(
       { accessToken: id },
       {
@@ -1542,6 +1558,22 @@ exports.updateQuoteByCaseId = async (req, res) => {
     
     // Check if quote already exists
     if (caseData.quote) {
+      // Check if quote has already been decided (accepted or declined)
+      const existingQuote = await Quote.findById(caseData.quote._id);
+      if (existingQuote) {
+        const isQuoteDecided = existingQuote.offerDecision?.decision === 'accepted' || 
+                              existingQuote.offerDecision?.decision === 'declined' ||
+                              existingQuote.status === 'accepted' || 
+                              existingQuote.status === 'declined';
+        
+        if (isQuoteDecided) {
+          return res.status(400).json({
+            success: false,
+            error: `Quote has already been ${existingQuote.offerDecision?.decision || existingQuote.status}. Cannot modify a quote that has been decided.`
+          });
+        }
+      }
+      
       // Update existing quote
       quote = await Quote.findByIdAndUpdate(
         caseData.quote._id,

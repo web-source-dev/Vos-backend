@@ -50,7 +50,7 @@ const CaseSchema = new mongoose.Schema({
   currentStage: {
     type: Number,
     min: 1,
-    max: 7,
+    max: 6,
     default: 1
   },
   stageStatuses: {
@@ -80,11 +80,6 @@ const CaseSchema = new mongoose.Schema({
       default: 'pending'
     },
     6: {
-      type: String,
-      enum: ['active', 'complete', 'pending'],
-      default: 'pending'
-    },
-    7: {
       type: String,
       enum: ['active', 'complete', 'pending'],
       default: 'pending'
@@ -159,6 +154,11 @@ const CaseSchema = new mongoose.Schema({
       }
     }
   ],
+  estimatorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now

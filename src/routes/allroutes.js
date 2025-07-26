@@ -11,6 +11,7 @@ const {
   submitInspection,
   savePendingInspection,
   assignEstimator,
+  assignEstimatorDuringInspection,
   getQuoteByToken,
   submitQuote,
   updateQuoteByCaseId,
@@ -27,6 +28,7 @@ const {
   generateBillOfSalePDF,
   updateCaseStatus,
   getCases,
+  getEstimatorCases,
   getCase,
   getCurrentUser,
   getUsersByRole,
@@ -35,6 +37,7 @@ const {
   deleteUser,
   getAllUsers,
   uploadDocument,
+  uploadBillOfSaleDocument,
   savePaperworkByCaseId,
   saveCompletionData,
   getInspectorInspections,
@@ -48,6 +51,7 @@ const {
   sendCustomerFormEmail,
   getTimeTrackingByCaseId,
   getTimeTrackingAnalytics,
+  getUserAnalytics,
   confirmPayoff,
   deleteCase,
 } = require('../controllers/allcontrollers');
@@ -64,9 +68,11 @@ router.post('/users', protect, isAdmin, createUser);
 router.put('/users/:userId', protect, isAdmin, updateUser);
 router.delete('/users/:userId', protect, isAdmin, deleteUser);
 router.get('/users/all', protect, isAdmin, getAllUsers);
+router.get('/users/:userId/analytics', protect, isAdmin, getUserAnalytics);
 
 // Case management routes (protected)
 router.get('/cases', protect, getCases);
+router.get('/cases/estimator', protect, isEstimator, getEstimatorCases);
 router.get('/cases/:caseId', protect, getCase);
 router.post('/cases', protect, createCase);
 router.put('/cases/:caseId', protect, updateCase);
@@ -90,6 +96,7 @@ router.get('/inspections/assigned', protect, isInspector, getInspectorInspection
 
 // Quote routes (protected)
 router.post('/cases/:caseId/estimator', protect, assignEstimator);
+router.post('/cases/:caseId/estimator-during-inspection', protect, assignEstimatorDuringInspection);
 router.get('/quote/:token', getQuoteByToken);
 router.post('/quote/:token', submitQuote);
 router.put('/cases/:caseId/quote', protect, isQuoteManager, updateQuoteByCaseId);
@@ -98,8 +105,9 @@ router.put('/cases/:caseId/quote', protect, isQuoteManager, updateQuoteByCaseId)
 router.post('/quote/:token/decision', updateOfferDecision);
 router.put('/cases/:caseId/offer-decision', protect, updateOfferDecisionByCaseId); // Remove isQuoteManager restriction
 
-// Document upload route
+// Document upload routes
 router.post('/upload', protect, uploadDocument);
+router.post('/cases/:caseId/bill-of-sale-upload', protect, uploadBillOfSaleDocument);
 
 // Paperwork routes
 router.post('/quote/:token/paperwork', updatePaperwork);

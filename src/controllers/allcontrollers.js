@@ -54,6 +54,98 @@ exports.uploadDocument = async (req, res) => {
   }
 };
 
+// Upload bill of sale document and save to transaction
+exports.uploadBillOfSaleDocument = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+    
+    if (!req.files || Object.keys(req.files).length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No files were uploaded.'
+      });
+    }
+
+    const file = req.files.file;
+    const uploadDir = path.join(__dirname, '../../uploads');
+
+    // Ensure uploads directory exists
+    await fs.mkdir(uploadDir, { recursive: true });
+
+    // Generate unique filename
+    const uniqueFilename = `${Date.now()}-${file.name}`;
+    const filePath = path.join(uploadDir, uniqueFilename);
+
+    // Move file to uploads directory
+    await file.mv(filePath);
+
+    const documentPath = `/uploads/${uniqueFilename}`;
+
+    // Find the case
+    const caseData = await Case.findById(caseId);
+    if (!caseData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
+
+    // Update or create transaction with the document
+    let transaction;
+    if (caseData.transaction) {
+      // Update existing transaction
+      transaction = await Transaction.findByIdAndUpdate(
+        caseData.transaction,
+        {
+          $set: {
+            'documents.signedBillOfSale': documentPath
+          }
+        },
+        { new: true }
+      );
+    } else {
+      // Create new transaction
+      transaction = await Transaction.create({
+        vehicle: caseData.vehicle,
+        customer: caseData.customer,
+        quote: caseData.quote,
+        documents: {
+          signedBillOfSale: documentPath
+        },
+        createdBy: req.user.id
+      });
+
+      // Update case with transaction reference
+      await Case.findByIdAndUpdate(caseId, {
+        transaction: transaction._id
+      });
+    }
+
+    if (!transaction) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to save document to transaction'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        path: documentPath,
+        filename: uniqueFilename,
+        originalName: file.name,
+        transaction: transaction
+      }
+    });
+  } catch (error) {
+    console.error('Bill of sale upload error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error uploading bill of sale document'
+    });
+  }
+};
+
 // Get current user
 exports.getCurrentUser = async (req, res) => {
   try {
@@ -126,11 +218,43 @@ exports.getCases = async (req, res) => {
       .populate('vehicle')
       .populate('inspection')
       .populate('quote')
+      .populate('transaction')
       .sort('-createdAt');
 
     res.status(200).json({
       success: true,
       data: cases
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Get cases assigned to a specific estimator
+exports.getEstimatorCases = async (req, res) => {
+  try {
+    const { email } = req.user; // Get the logged-in user's email
+    
+    // Find cases where the quote's estimator email matches the logged-in user's email
+    const cases = await Case.find()
+      .populate('customer')
+      .populate('vehicle')
+      .populate('inspection')
+      .populate('quote')
+      .populate('transaction')
+      .sort('-createdAt');
+
+    // Filter cases where the estimator email matches
+    const estimatorCases = cases.filter(caseData => {
+      return caseData.quote && caseData.quote.estimator && caseData.quote.estimator.email === email;
+    });
+
+    res.status(200).json({
+      success: true,
+      data: estimatorCases
     });
   } catch (error) {
     res.status(500).json({
@@ -705,6 +829,9 @@ exports.assignEstimator = async (req, res) => {
       });
     }
 
+    // Find estimator user by email
+    const estimatorUser = await User.findOne({ email: estimator.email });
+
     // Create quote record
     const quote = await Quote.create({
       caseId: caseId,
@@ -716,14 +843,99 @@ exports.assignEstimator = async (req, res) => {
       createdBy: req.user.id
     });
 
-    // Update case with quote reference
+    // Update case with quote reference and estimatorId
     await Case.findByIdAndUpdate(caseId, {
       quote: quote._id,
+      estimatorId: estimatorUser ? estimatorUser._id : null,
       currentStage: 4,
       'stageStatuses.3': 'complete',
       'stageStatuses.4': 'active',
       status: 'quote-ready'
     });
+
+    // Populate the quote with related data for the response
+    const populatedQuote = await Quote.findById(quote._id)
+      .populate('caseId')
+      .populate('vehicle')
+      .populate('customer')
+      .populate('inspection');
+
+    // Send email to estimator
+    await emailService.sendEstimatorEmail(
+      populatedQuote,
+      caseData.inspection,
+      caseData.customer,
+      caseData.vehicle,
+      process.env.BASE_URL
+    );
+
+    res.status(200).json({
+      success: true,
+      data: populatedQuote
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Assign estimator during inspection scheduling
+exports.assignEstimatorDuringInspection = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+    const { estimator } = req.body;
+
+    const caseData = await Case.findById(caseId)
+      .populate('customer')
+      .populate('vehicle')
+      .populate('inspection');
+
+    if (!caseData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
+
+    // Find estimator user by email
+    const estimatorUser = await User.findOne({ email: estimator.email });
+
+    // Check if quote already exists
+    let quote = await Quote.findOne({ caseId: caseId });
+    
+    if (quote) {
+      // Update existing quote with new estimator
+      quote = await Quote.findByIdAndUpdate(quote._id, {
+        estimator,
+        updatedAt: new Date()
+      }, { new: true });
+    } else {
+      // Create new quote record
+      quote = await Quote.create({
+        caseId: caseId,
+        vehicle: caseData.vehicle._id,
+        customer: caseData.customer._id,
+        inspection: caseData.inspection._id,
+        estimator,
+        status: 'draft',
+        createdBy: req.user.id
+      });
+    }
+
+    // Update case with quote reference and estimatorId if not already set
+    if (!caseData.quote) {
+      await Case.findByIdAndUpdate(caseId, {
+        quote: quote._id,
+        estimatorId: estimatorUser ? estimatorUser._id : null
+      });
+    } else {
+      // Always update estimatorId if estimator is changed
+      await Case.findByIdAndUpdate(caseId, {
+        estimatorId: estimatorUser ? estimatorUser._id : null
+      });
+    }
 
     // Populate the quote with related data for the response
     const populatedQuote = await Quote.findById(quote._id)
@@ -822,6 +1034,41 @@ exports.submitQuote = async (req, res) => {
         success: false,
         error: 'Invalid or expired quote token'
       });
+    }
+
+    // Create or update transaction with sale price from quote
+    if (quote.offerAmount) {
+      let transaction = await Transaction.findOne({ quote: quote._id });
+      
+      if (transaction) {
+        // Update existing transaction
+        transaction = await Transaction.findByIdAndUpdate(
+          transaction._id,
+          {
+            'billOfSale.salePrice': quote.offerAmount
+          },
+          { new: true }
+        );
+      } else {
+        // Create new transaction with sale price
+        transaction = await Transaction.create({
+          vehicle: quote.vehicle._id,
+          customer: quote.customer._id,
+          quote: quote._id,
+          billOfSale: {
+            salePrice: quote.offerAmount
+          }
+        });
+      }
+      
+      // Update case with transaction reference if not already set
+      const caseData = await Case.findOne({ quote: quote._id });
+      if (caseData && !caseData.transaction) {
+        await Case.findByIdAndUpdate(
+          caseData._id,
+          { transaction: transaction._id }
+        );
+      }
     }
 
     // Update case status
@@ -1630,8 +1877,40 @@ exports.updateQuoteByCaseId = async (req, res) => {
       });
     }
 
-    // Don't automatically advance stages - let the frontend manage stage progression
-    // The frontend will call updateCaseStageByCaseId separately to manage stage status
+    // Create or update transaction with sale price from quote
+    if (quote.offerAmount) {
+      let transaction = await Transaction.findOne({ quote: quote._id });
+      
+      if (transaction) {
+        // Update existing transaction
+        transaction = await Transaction.findByIdAndUpdate(
+          transaction._id,
+          {
+            'billOfSale.salePrice': quote.offerAmount
+          },
+          { new: true }
+        );
+      } else {
+        // Create new transaction with sale price
+        transaction = await Transaction.create({
+          vehicle: caseData.vehicle._id,
+          customer: caseData.customer._id,
+          quote: quote._id,
+          billOfSale: {
+            salePrice: quote.offerAmount
+          },
+          createdBy: req.user.id
+        });
+      }
+      
+      // Update case with transaction reference if not already set
+      if (!caseData.transaction) {
+        await Case.findByIdAndUpdate(
+          caseId,
+          { transaction: transaction._id }
+        );
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -1939,7 +2218,7 @@ exports.savePaperworkByCaseId = async (req, res) => {
             vehicleMileage: updatedVehicle.currentMileage || paperworkData.billOfSale?.vehicleMileage || '',
             saleDate: paperworkData.billOfSale?.saleDate || new Date().toISOString().split("T")[0],
             saleTime: paperworkData.billOfSale?.saleTime || new Date().toTimeString().split(" ")[0].slice(0, 5),
-            salePrice: paperworkData.billOfSale?.salePrice || 0,
+            salePrice: caseData.quote?.offerAmount || paperworkData.billOfSale?.salePrice || 0,
             preferredPaymentMethod: paperworkData.preferredPaymentMethod || 'Wire',
             odometerReading: paperworkData.billOfSale?.odometerReading || '',
             odometerAccurate: paperworkData.billOfSale?.odometerAccurate || true,
@@ -1952,6 +2231,13 @@ exports.savePaperworkByCaseId = async (req, res) => {
             witnessName: paperworkData.billOfSale?.witnessName || '',
             witnessPhone: paperworkData.billOfSale?.witnessPhone || '',
           },
+          bankDetails: {
+            bankName: paperworkData.bankDetails?.bankName || '',
+            loanNumber: paperworkData.bankDetails?.loanNumber || '',
+            payoffAmount: paperworkData.bankDetails?.payoffAmount || 0
+          },
+          payoffStatus: paperworkData.payoffStatus || 'not_required',
+          payoffNotes: paperworkData.payoffNotes || '',
           preferredPaymentMethod: paperworkData.preferredPaymentMethod || 'Wire',
           documents: documents,
           paymentStatus: paperworkData.status || 'pending',
@@ -1990,7 +2276,7 @@ exports.savePaperworkByCaseId = async (req, res) => {
             vehicleMileage: updatedVehicle.currentMileage || paperworkData.billOfSale?.vehicleMileage || '',
             saleDate: paperworkData.billOfSale?.saleDate || new Date().toISOString().split("T")[0],
             saleTime: paperworkData.billOfSale?.saleTime || new Date().toTimeString().split(" ")[0].slice(0, 5),
-            salePrice: paperworkData.billOfSale?.salePrice || 0,
+            salePrice: caseData.quote?.offerAmount || paperworkData.billOfSale?.salePrice || 0,
             preferredPaymentMethod: paperworkData.preferredPaymentMethod || 'Wire',
             odometerReading: paperworkData.billOfSale?.odometerReading || '',
             odometerAccurate: paperworkData.billOfSale?.odometerAccurate || true,
@@ -2003,6 +2289,13 @@ exports.savePaperworkByCaseId = async (req, res) => {
             witnessName: paperworkData.billOfSale?.witnessName || '',
             witnessPhone: paperworkData.billOfSale?.witnessPhone || '',
           },
+          bankDetails: {
+            bankName: paperworkData.bankDetails?.bankName || '',
+            loanNumber: paperworkData.bankDetails?.loanNumber || '',
+            payoffAmount: paperworkData.bankDetails?.payoffAmount || 0
+          },
+          payoffStatus: paperworkData.payoffStatus || 'not_required',
+          payoffNotes: paperworkData.payoffNotes || '',
           preferredPaymentMethod: paperworkData.preferredPaymentMethod || 'Wire',
           documents: documents,
           paymentStatus: paperworkData.status || 'pending',
@@ -2040,7 +2333,7 @@ exports.savePaperworkByCaseId = async (req, res) => {
           vehicleMileage: updatedVehicle.currentMileage || paperworkData.billOfSale?.vehicleMileage || '',
           saleDate: paperworkData.billOfSale?.saleDate || new Date().toISOString().split("T")[0],
           saleTime: paperworkData.billOfSale?.saleTime || new Date().toTimeString().split(" ")[0].slice(0, 5),
-          salePrice: paperworkData.billOfSale?.salePrice || 0,
+          salePrice: caseData.quote?.offerAmount || paperworkData.billOfSale?.salePrice || 0,
           preferredPaymentMethod: paperworkData.preferredPaymentMethod || 'Wire',
           odometerReading: paperworkData.billOfSale?.odometerReading || '',
           odometerAccurate: paperworkData.billOfSale?.odometerAccurate || true,
@@ -2050,17 +2343,24 @@ exports.savePaperworkByCaseId = async (req, res) => {
           notaryRequired: paperworkData.billOfSale?.notaryRequired || false,
           notaryName: paperworkData.billOfSale?.notaryName || '',
           notaryCommissionExpiry: paperworkData.billOfSale?.notaryCommissionExpiry || '',
-          witnessName: paperworkData.billOfSale?.witnessName || '',
-          witnessPhone: paperworkData.billOfSale?.witnessPhone || '',
-        },
-        preferredPaymentMethod: paperworkData.preferredPaymentMethod || 'Wire',
-        documents: documents,
-        paymentStatus: paperworkData.status || 'pending',
-        submittedAt: paperworkData.submittedAt || new Date(),
-        completedAt: paperworkData.status === 'completed' ? new Date() : null,
-        createdBy: req.user.id
-      });
-    }
+                      witnessName: paperworkData.billOfSale?.witnessName || '',
+            witnessPhone: paperworkData.billOfSale?.witnessPhone || '',
+          },
+          bankDetails: {
+            bankName: paperworkData.bankDetails?.bankName || '',
+            loanNumber: paperworkData.bankDetails?.loanNumber || '',
+            payoffAmount: paperworkData.bankDetails?.payoffAmount || 0
+          },
+          payoffStatus: paperworkData.payoffStatus || 'not_required',
+          payoffNotes: paperworkData.payoffNotes || '',
+          preferredPaymentMethod: paperworkData.preferredPaymentMethod || 'Wire',
+          documents: documents,
+          paymentStatus: paperworkData.status || 'pending',
+          submittedAt: paperworkData.submittedAt || new Date(),
+          completedAt: paperworkData.status === 'completed' ? new Date() : null,
+          createdBy: req.user.id
+        });
+      }
 
     if (!transaction) {
       console.log('Failed to create/update transaction');
@@ -3339,6 +3639,499 @@ exports.confirmPayoff = async (req, res) => {
     console.error('=== confirmPayoff ERROR ===');
     console.error('Error confirming payoff:', error);
     console.error('Error stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Get comprehensive user analytics
+exports.getUserAnalytics = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { timeRange = '30d' } = req.query;
+
+    // Validate user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    // Calculate date range
+    const now = new Date();
+    const timeRangeMap = {
+      '7d': new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+      '30d': new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+      '90d': new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000),
+      '1y': new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
+    };
+    const startDate = timeRangeMap[timeRange] || timeRangeMap['30d'];
+
+    let analytics = {
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+        location: user.location,
+        createdAt: user.createdAt
+      },
+      overview: {
+        totalCases: 0,
+        completedCases: 0,
+        activeCases: 0,
+        totalRevenue: 0,
+        averageCaseValue: 0,
+        completionRate: 0,
+        averageProcessingTime: 0
+      },
+      timeTracking: {
+        totalTimeSpent: 0,
+        averageTimePerCase: 0,
+        timeByStage: {},
+        recentActivity: []
+      },
+      performance: {
+        casesThisMonth: 0,
+        casesLastMonth: 0,
+        revenueThisMonth: 0,
+        revenueLastMonth: 0,
+        topPerformingMonths: []
+      },
+      vehicles: {
+        totalVehicles: 0,
+        lowestValue: null,
+        highestValue: null,
+        averageValue: 0,
+        valueDistribution: {}
+      },
+      roleSpecific: {}
+    };
+
+    // Get cases based on user role
+    let userCases = [];
+    
+    if (user.role === 'agent') {
+      // Agent cases - cases they created
+      userCases = await Case.find({ 
+        createdBy: user._id,
+        createdAt: { $gte: startDate }
+      }).populate('customer vehicle quote transaction');
+    } else if (user.role === 'estimator') {
+      // Estimator cases - cases they were assigned to via estimatorId
+      userCases = await Case.find({
+        estimatorId: user._id,
+        createdAt: { $gte: startDate }
+      }).populate('customer vehicle quote transaction');
+    } else if (user.role === 'inspector') {
+      // Inspector cases - inspections they performed
+      const inspections = await Inspection.find({
+        'inspector.email': user.email,
+        createdAt: { $gte: startDate }
+      });
+      const caseIds = inspections.map(inspection => inspection.caseId);
+      userCases = await Case.find({
+        _id: { $in: caseIds }
+      }).populate('customer vehicle quote transaction inspection');
+    }
+
+    // Calculate overview metrics
+    analytics.overview.totalCases = userCases.length;
+    analytics.overview.completedCases = userCases.filter(case_ => case_.status === 'completed').length;
+    analytics.overview.activeCases = userCases.filter(case_ => case_.status !== 'completed' && case_.status !== 'cancelled').length;
+    
+    // Calculate revenue and values
+    const completedCases = userCases.filter(case_ => case_.status === 'completed');
+    analytics.overview.totalRevenue = completedCases.reduce((sum, case_) => {
+      // Check if transaction exists and has billOfSale with salePrice
+      if (case_.transaction && case_.transaction.billOfSale && case_.transaction.billOfSale.salePrice) {
+        return sum + case_.transaction.billOfSale.salePrice;
+      }
+      return sum;
+    }, 0);
+    
+    analytics.overview.averageCaseValue = completedCases.length > 0 
+      ? analytics.overview.totalRevenue / completedCases.length 
+      : 0;
+    
+    analytics.overview.completionRate = userCases.length > 0 
+      ? (analytics.overview.completedCases / userCases.length) * 100 
+      : 0;
+
+    // Calculate average processing time
+    const processingTimes = completedCases.map(case_ => {
+      const created = new Date(case_.createdAt);
+      const completed = new Date(case_.completion?.completedAt || case_.updatedAt);
+      const timeDiff = completed.getTime() - created.getTime();
+      return timeDiff > 0 ? timeDiff / (1000 * 60 * 60 * 24) : 0; // days
+    }).filter(time => !isNaN(time) && time > 0);
+    
+    analytics.overview.averageProcessingTime = processingTimes.length > 0 
+      ? processingTimes.reduce((sum, time) => sum + time, 0) / processingTimes.length 
+      : 0;
+
+    // Get time tracking data
+    const timeTrackingData = await TimeTracking.find({
+      caseId: { $in: userCases.map(case_ => case_._id) }
+    });
+
+    // Calculate time tracking metrics
+    analytics.timeTracking.totalTimeSpent = timeTrackingData.reduce((sum, tracking) => {
+      return sum + (tracking.totalTime || 0);
+    }, 0);
+
+    analytics.timeTracking.averageTimePerCase = userCases.length > 0 
+      ? analytics.timeTracking.totalTimeSpent / userCases.length 
+      : 0;
+
+    // Group time by stage
+    const timeByStage = {};
+    timeTrackingData.forEach(tracking => {
+      if (tracking.stageTimes) {
+        Object.keys(tracking.stageTimes).forEach(stage => {
+          if (!timeByStage[stage]) timeByStage[stage] = 0;
+          // Access the totalTime property of each stage
+          const stageTime = tracking.stageTimes[stage]?.totalTime || 0;
+          timeByStage[stage] += stageTime;
+        });
+      }
+    });
+    analytics.timeTracking.timeByStage = timeByStage;
+
+    // Get recent activity (last 10 cases)
+    analytics.timeTracking.recentActivity = userCases
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .slice(0, 10)
+      .map(case_ => ({
+        caseId: case_._id,
+        status: case_.status,
+        lastActivity: case_.lastActivity || null,
+        updatedAt: case_.updatedAt || case_.createdAt,
+        customer: case_.customer ? {
+          name: `${case_.customer.firstName} ${case_.customer.lastName}`,
+          id: case_.customer._id
+        } : null,
+        vehicle: case_.vehicle ? {
+          year: case_.vehicle.year,
+          make: case_.vehicle.make,
+          model: case_.vehicle.model,
+          id: case_.vehicle._id
+        } : null
+      }));
+
+    // Calculate monthly performance
+    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    
+    analytics.performance.casesThisMonth = userCases.filter(case_ => 
+      new Date(case_.createdAt) >= thisMonth
+    ).length;
+    
+    analytics.performance.casesLastMonth = userCases.filter(case_ => 
+      new Date(case_.createdAt) >= lastMonth && new Date(case_.createdAt) < thisMonth
+    ).length;
+
+    // Calculate monthly revenue
+    analytics.performance.revenueThisMonth = completedCases
+      .filter(case_ => new Date(case_.completion?.completedAt || case_.updatedAt) >= thisMonth)
+      .reduce((sum, case_) => {
+        if (case_.transaction && case_.transaction.billOfSale && case_.transaction.billOfSale.salePrice) {
+          return sum + case_.transaction.billOfSale.salePrice;
+        }
+        return sum;
+      }, 0);
+    
+    analytics.performance.revenueLastMonth = completedCases
+      .filter(case_ => {
+        const completedDate = new Date(case_.completion?.completedAt || case_.updatedAt);
+        return completedDate >= lastMonth && completedDate < thisMonth;
+      })
+      .reduce((sum, case_) => {
+        if (case_.transaction && case_.transaction.billOfSale && case_.transaction.billOfSale.salePrice) {
+          return sum + case_.transaction.billOfSale.salePrice;
+        }
+        return sum;
+      }, 0);
+
+    // Calculate vehicle statistics
+    const vehicles = userCases.map(case_ => case_.vehicle).filter(Boolean);
+    analytics.vehicles.totalVehicles = vehicles.length;
+    
+    if (vehicles.length > 0) {
+      const values = vehicles.map(vehicle => vehicle.estimatedValue || 0).filter(value => value > 0);
+      if (values.length > 0) {
+        analytics.vehicles.lowestValue = Math.min(...values);
+        analytics.vehicles.highestValue = Math.max(...values);
+        analytics.vehicles.averageValue = values.reduce((sum, value) => sum + value, 0) / values.length;
+      }
+    }
+
+    // Role-specific analytics
+    if (user.role === 'agent') {
+      analytics.roleSpecific = {
+        customersCreated: userCases.length,
+        averageCustomerValue: analytics.overview.averageCaseValue,
+        conversionRate: analytics.overview.completionRate,
+        topCustomers: userCases
+          .filter(case_ => case_.customer)
+          .map(case_ => ({
+            customerId: case_.customer._id,
+            customerName: `${case_.customer.firstName} ${case_.customer.lastName}`,
+            caseValue: case_.transaction?.billOfSale?.salePrice || 0,
+            status: case_.status
+          }))
+          .sort((a, b) => b.caseValue - a.caseValue)
+          .slice(0, 5)
+      };
+    } else if (user.role === 'estimator') {
+      analytics.roleSpecific = {
+        customersCreated: userCases.length,
+        averageCustomerValue: analytics.overview.averageCaseValue,
+        conversionRate: analytics.overview.completionRate,
+        topCustomers: userCases
+          .filter(case_ => case_.customer)
+          .map(case_ => ({
+            customerId: case_.customer._id,
+            customerName: `${case_.customer.firstName} ${case_.customer.lastName}`,
+            caseValue: case_.transaction?.billOfSale?.salePrice || 0,
+            status: case_.status
+          }))
+          .sort((a, b) => b.caseValue - a.caseValue)
+          .slice(0, 5)
+      };
+    } else if (user.role === 'inspector') {
+      // Get all inspections for this inspector
+      const inspections = await Inspection.find({
+        'inspector.email': user.email,
+        createdAt: { $gte: startDate }
+      }).populate('customer vehicle');
+      
+      // Get cases that have these inspections
+      const inspectionIds = inspections.map(inspection => inspection._id);
+      const cases = await Case.find({
+        inspection: { $in: inspectionIds }
+      }).populate('customer vehicle');
+      
+      // Calculate inspection statistics
+      const completedInspections = inspections.filter(inspection => inspection.status === 'completed');
+      const pendingInspections = inspections.filter(inspection => inspection.status === 'scheduled');
+      const inProgressInspections = inspections.filter(inspection => inspection.status === 'in-progress');
+      
+      // Calculate monthly performance
+      const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      
+      const inspectionsThisMonth = inspections.filter(inspection => 
+        new Date(inspection.createdAt) >= thisMonth
+      );
+      const inspectionsLastMonth = inspections.filter(inspection => 
+        new Date(inspection.createdAt) >= lastMonth && new Date(inspection.createdAt) < thisMonth
+      );
+      
+      const completedThisMonth = completedInspections.filter(inspection => 
+        new Date(inspection.completedAt || inspection.updatedAt) >= thisMonth
+      );
+      const completedLastMonth = completedInspections.filter(inspection => {
+        const completedDate = new Date(inspection.completedAt || inspection.updatedAt);
+        return completedDate >= lastMonth && completedDate < thisMonth;
+      });
+      
+      // Calculate average scores
+      const averageScoreThisMonth = completedThisMonth.length > 0 
+        ? completedThisMonth.reduce((sum, inspection) => sum + (inspection.overallScore || 0), 0) / completedThisMonth.length 
+        : 0;
+      const averageScoreLastMonth = completedLastMonth.length > 0 
+        ? completedLastMonth.reduce((sum, inspection) => sum + (inspection.overallScore || 0), 0) / completedLastMonth.length 
+        : 0;
+      
+      // Get time tracking for cases
+      const caseIds = cases.map(case_ => case_._id);
+      const inspectionTimeTracking = await TimeTracking.find({
+        caseId: { $in: caseIds }
+      });
+      
+      // Calculate average inspection time
+      const totalInspectionTime = inspectionTimeTracking.reduce((sum, tracking) => {
+        return sum + (tracking.totalTime || 0);
+      }, 0);
+      
+      const averageInspectionTime = completedInspections.length > 0 
+        ? totalInspectionTime / completedInspections.length 
+        : 0;
+      
+      // Update overview for inspector
+      analytics.overview = {
+        totalCases: cases.length,
+        completedCases: completedInspections.length,
+        activeCases: pendingInspections.length + inProgressInspections.length,
+        totalRevenue: 0, // Inspectors don't generate revenue
+        averageCaseValue: 0,
+        completionRate: inspections.length > 0 ? (completedInspections.length / inspections.length) * 100 : 0,
+        averageProcessingTime: averageInspectionTime / (1000 * 60 * 60 * 24), // Convert to days
+        averageInspectionScore: completedInspections.length > 0 
+          ? completedInspections.reduce((sum, inspection) => sum + (inspection.overallScore || 0), 0) / completedInspections.length 
+          : 0,
+        totalInspections: inspections.length,
+        completedInspections: completedInspections.length,
+        pendingInspections: pendingInspections.length,
+        inProgressInspections: inProgressInspections.length,
+        averageInspectionTime: averageInspectionTime
+      };
+      
+      // Update performance for inspector
+      analytics.performance = {
+        casesThisMonth: inspectionsThisMonth.length,
+        casesLastMonth: inspectionsLastMonth.length,
+        revenueThisMonth: 0,
+        revenueLastMonth: 0,
+        inspectionsThisMonth: inspectionsThisMonth.length,
+        inspectionsLastMonth: inspectionsLastMonth.length,
+        completedThisMonth: completedThisMonth.length,
+        completedLastMonth: completedLastMonth.length,
+        averageScoreThisMonth: averageScoreThisMonth,
+        averageScoreLastMonth: averageScoreLastMonth
+      };
+      
+      // Update vehicles for inspector - use case vehicles for better data
+      const caseVehicles = cases.map(case_ => case_.vehicle).filter(Boolean);
+      const inspectionVehicles = inspections.map(inspection => inspection.vehicle).filter(Boolean);
+      
+      // Use case vehicles if available, otherwise fall back to inspection vehicles
+      const vehicles = caseVehicles.length > 0 ? caseVehicles : inspectionVehicles;
+      
+      
+      
+      const vehicleValues = vehicles.map(vehicle => {
+        // Use the correct field name from Vehicle model
+        let value = vehicle.estimatedValue;
+        
+        // If no estimatedValue, try to use a reasonable default based on vehicle age
+        if (!value || isNaN(value) || value <= 0) {
+          const currentYear = new Date().getFullYear();
+          const vehicleYear = parseInt(vehicle.year) || currentYear;
+          const age = currentYear - vehicleYear;
+          
+          // Simple default value calculation based on age
+          if (age <= 2) value = 25000; // Newer vehicles
+          else if (age <= 5) value = 18000; // 3-5 years old
+          else if (age <= 10) value = 12000; // 6-10 years old
+          else value = 8000; // Older vehicles
+        }
+        
+        const numericValue = typeof value === 'number' && !isNaN(value) && value > 0 ? value : 0;
+        
+        return numericValue;
+      }).filter(value => value > 0);
+      
+      
+      
+      analytics.vehicles = {
+        totalVehicles: vehicles.length,
+        lowestValue: vehicleValues.length > 0 ? Math.min(...vehicleValues) : null,
+        highestValue: vehicleValues.length > 0 ? Math.max(...vehicleValues) : null,
+        averageValue: vehicleValues.length > 0 
+          ? vehicleValues.reduce((sum, value) => sum + value, 0) / vehicleValues.length 
+          : 0,
+        vehicleTypes: vehicles.reduce((acc, vehicle) => {
+          // Use the correct field name from Vehicle model
+          const type = vehicle.bodyStyle || 'Unknown';
+          acc[type] = (acc[type] || 0) + 1;
+          return acc;
+        }, {})
+      };
+      
+      
+      
+      // Update time tracking for inspector
+      analytics.timeTracking = {
+        totalTimeSpent: totalInspectionTime,
+        averageTimePerInspection: averageInspectionTime,
+        timeByStage: {},
+        recentActivity: inspections
+          .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime())
+          .slice(0, 10)
+          .map(inspection => {
+            const case_ = cases.find(c => c.inspection && c.inspection.toString() === inspection._id.toString());
+            const timeTracking = case_ ? inspectionTimeTracking.find(t => t.caseId.toString() === case_._id.toString()) : null;
+            return {
+              inspectionId: inspection._id,
+              caseId: case_ ? case_._id : null,
+              status: inspection.status,
+              score: inspection.overallScore,
+              timeSpent: timeTracking?.totalTime || 0,
+              completedAt: inspection.completedAt,
+              customer: inspection.customer ? {
+                name: `${inspection.customer.firstName} ${inspection.customer.lastName}`,
+                id: inspection.customer._id
+              } : null,
+              vehicle: inspection.vehicle ? {
+                year: inspection.vehicle.year,
+                make: inspection.vehicle.make,
+                model: inspection.vehicle.model,
+                id: inspection.vehicle._id
+              } : null
+            };
+          })
+      };
+      
+      analytics.roleSpecific = {
+        inspectionsCompleted: completedInspections.length,
+        averageInspectionScore: completedInspections.length > 0 
+          ? completedInspections.reduce((sum, inspection) => sum + (inspection.overallScore || 0), 0) / completedInspections.length 
+          : 0,
+        averageInspectionTime: averageInspectionTime,
+        recentInspections: completedInspections
+          .sort((a, b) => new Date(b.completedAt || b.updatedAt || b.createdAt).getTime() - new Date(a.completedAt || a.updatedAt || a.createdAt).getTime())
+          .slice(0, 5)
+          .map(inspection => {
+            const case_ = cases.find(c => c.inspection && c.inspection.toString() === inspection._id.toString());
+            const timeTracking = case_ ? inspectionTimeTracking.find(t => t.caseId.toString() === case_._id.toString()) : null;
+            return {
+              caseId: case_ ? case_._id : inspection._id,
+              score: inspection.overallScore || 0,
+              status: inspection.status,
+              completedAt: inspection.completedAt || inspection.updatedAt || inspection.createdAt,
+              timeSpent: timeTracking?.totalTime || 0,
+              customerName: inspection.customer ? `${inspection.customer.firstName} ${inspection.customer.lastName}` : 'Unknown',
+              vehicleInfo: inspection.vehicle ? `${inspection.vehicle.year} ${inspection.vehicle.make} ${inspection.vehicle.model}` : 'Unknown'
+            };
+          }),
+        pendingInspections: pendingInspections
+          .slice(0, 5)
+          .map(inspection => {
+            const case_ = cases.find(c => c.inspection && c.inspection.toString() === inspection._id.toString());
+            return {
+              caseId: case_ ? case_._id : inspection._id,
+              scheduledDate: inspection.scheduledDate || inspection.createdAt,
+              customerName: inspection.customer ? `${inspection.customer.firstName} ${inspection.customer.lastName}` : 'Unknown',
+              vehicleInfo: inspection.vehicle ? `${inspection.vehicle.year} ${inspection.vehicle.make} ${inspection.vehicle.model}` : 'Unknown'
+            };
+          }),
+        inProgressInspections: inProgressInspections
+          .slice(0, 5)
+          .map(inspection => {
+            const case_ = cases.find(c => c.inspection && c.inspection.toString() === inspection._id.toString());
+            return {
+              caseId: case_ ? case_._id : inspection._id,
+              startedAt: inspection.updatedAt || inspection.createdAt,
+              customerName: inspection.customer ? `${inspection.customer.firstName} ${inspection.customer.lastName}` : 'Unknown',
+              vehicleInfo: inspection.vehicle ? `${inspection.vehicle.year} ${inspection.vehicle.make} ${inspection.vehicle.model}` : 'Unknown'
+            };
+          })
+      };
+    }
+
+    res.status(200).json({
+      success: true,
+      data: analytics
+    });
+  } catch (error) {
+    console.error('Error getting user analytics:', error);
     res.status(500).json({
       success: false,
       error: error.message

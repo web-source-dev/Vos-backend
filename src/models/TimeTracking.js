@@ -29,12 +29,7 @@ const timeTrackingSchema = new mongoose.Schema({
       inspectorName: String,
       
     },
-    quotePreparation: {
-      startTime: Date,
-      endTime: Date,
-      totalTime: Number,
-    },
-    offerDecision: {
+    quoteAndDecision: {
       startTime: Date,
       endTime: Date,
       totalTime: Number,

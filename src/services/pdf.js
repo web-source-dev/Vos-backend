@@ -654,7 +654,8 @@ function addBillOfSaleContent(doc, customer, vehicle, billOfSale) {
   doc.fontSize(16).text('4. Sale Terms and Payment', {underline: true});
   doc.moveDown(0.5);
   doc.fontSize(12);
-  doc.text(`Purchase Price: $${(billOfSale.salePrice || 0).toLocaleString()} Dollars (USD)`, {indent: 10});
+  const salePrice = billOfSale.salePrice || 0;
+  doc.text(`Purchase Price: $${salePrice.toLocaleString()} Dollars (USD)`, {indent: 10});
   doc.text(`Payment Method: ${billOfSale.paymentMethod || 'Not Specified'}`, {indent: 10});
   doc.text(`Payment Date: ${saleDate}`, {indent: 10});
   doc.moveDown(0.5);

@@ -203,7 +203,7 @@ async function sendCustomerConfirmationEmail(customerData, vehicleData, transact
         <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
           <p><strong>Vehicle:</strong> ${vehicle.year || 'Unknown'} ${vehicle.make || 'Unknown'} ${vehicle.model || 'Unknown'}</p>
           <p><strong>VIN:</strong> ${vehicle.vin || 'Not provided'}</p>
-          <p><strong>Sale Amount:</strong> ${billOfSale.salePrice ? `$${billOfSale.salePrice.toLocaleString()}` : 'Amount to be determined'}</p>
+          <p><strong>Sale Amount:</strong> ${billOfSale.salePrice ? `$${billOfSale.salePrice.toLocaleString()}` : (transaction.quote?.offerAmount ? `$${transaction.quote.offerAmount.toLocaleString()}` : 'Amount to be determined')}</p>
           <p><strong>Sale Date:</strong> ${billOfSale.saleDate ? new Date(billOfSale.saleDate).toLocaleDateString() : 'Date to be determined'}</p>
           <p><strong>Payment Method:</strong> ${billOfSale.paymentMethod || 'To be determined'}</p>
         </div>
@@ -460,7 +460,7 @@ async function sendEmail(mailOptions) {
 }
 
 // Send quote email to customer
-exports.sendQuoteEmail = async (customer, vehicle, quote, baseUrl) => {
+async function sendQuoteEmail(customer, vehicle, quote, baseUrl) {
   try {
     const offerAmount = quote.offerAmount ? quote.offerAmount.toLocaleString() : 'N/A';
     const expiryDate = quote.expiryDate ? new Date(quote.expiryDate).toLocaleDateString() : 'N/A';
@@ -496,7 +496,7 @@ exports.sendQuoteEmail = async (customer, vehicle, quote, baseUrl) => {
 };
 
 // Send decision confirmation email
-exports.sendDecisionEmail = async (customer, vehicle, quote, baseUrl) => {
+async function sendDecisionEmail(customer, vehicle, quote, baseUrl) {
   try {
     const offerAmount = quote.offerAmount ? quote.offerAmount.toLocaleString() : 'N/A';
     const decision = quote.offerDecision?.decision || 'pending';
@@ -562,13 +562,13 @@ exports.sendDecisionEmail = async (customer, vehicle, quote, baseUrl) => {
  * @param {String} documentType - Type of document that was signed
  * @returns {Promise} - Promise resolving to the email info
  */
-exports.sendSigningCompletionEmail = async (
+async function sendSigningCompletionEmail(
   recipientEmail,
   recipientName,
   vehicleData,
   signedDocumentUrl,
   documentType
-) => {
+) {
   // Format document type for display
   const formattedDocumentType = documentType
     .split('-')
@@ -858,5 +858,8 @@ module.exports = {
   sendQuoteUpdateEmail,
   sendNegotiationUpdateEmail,
   sendInspectionCompletedEmail,
-  sendCustomerFormEmail
+  sendCustomerFormEmail,
+  sendQuoteEmail,
+  sendDecisionEmail,
+  sendSigningCompletionEmail
 }; 

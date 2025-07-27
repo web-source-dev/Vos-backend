@@ -3763,10 +3763,12 @@ exports.getUserAnalytics = async (req, res) => {
       ? (analytics.overview.completedCases / userCases.length) * 100 
       : 0;
 
-    // Calculate average processing time
-    const processingTimes = completedCases.map(case_ => {
+    // Calculate average processing time per case
+    const processingTimes = userCases.map(case_ => {
       const created = new Date(case_.createdAt);
-      const completed = new Date(case_.completion?.completedAt || case_.updatedAt);
+      const completed = case_.status === 'completed' 
+        ? new Date(case_.completion?.completedAt || case_.updatedAt)
+        : new Date(case_.updatedAt);
       const timeDiff = completed.getTime() - created.getTime();
       return timeDiff > 0 ? timeDiff / (1000 * 60 * 60 * 24) : 0; // days
     }).filter(time => !isNaN(time) && time > 0);
@@ -3863,7 +3865,23 @@ exports.getUserAnalytics = async (req, res) => {
     analytics.vehicles.totalVehicles = vehicles.length;
     
     if (vehicles.length > 0) {
-      const values = vehicles.map(vehicle => vehicle.estimatedValue || 0).filter(value => value > 0);
+      // For estimators, prioritize actual sale prices, then quote amounts, then estimated values
+      const values = userCases.map(case_ => {
+        // First try to get the actual sale price from transaction
+        if (case_.transaction && case_.transaction.billOfSale && case_.transaction.billOfSale.salePrice) {
+          return case_.transaction.billOfSale.salePrice;
+        }
+        // Then try to get the quote amount
+        if (case_.quote && case_.quote.offerAmount) {
+          return case_.quote.offerAmount;
+        }
+        // Finally fall back to vehicle estimated value
+        if (case_.vehicle && case_.vehicle.estimatedValue) {
+          return case_.vehicle.estimatedValue;
+        }
+        return 0;
+      }).filter(value => value > 0);
+      
       if (values.length > 0) {
         analytics.vehicles.lowestValue = Math.min(...values);
         analytics.vehicles.highestValue = Math.max(...values);
@@ -3889,17 +3907,48 @@ exports.getUserAnalytics = async (req, res) => {
           .slice(0, 5)
       };
     } else if (user.role === 'estimator') {
+      // Calculate quote statistics for estimators
+      const quotes = userCases.filter(case_ => case_.quote).map(case_ => case_.quote);
+      const acceptedQuotes = quotes.filter(quote => 
+        quote.offerDecision && quote.offerDecision.decision === 'accepted'
+      );
+      const declinedQuotes = quotes.filter(quote => 
+        quote.offerDecision && quote.offerDecision.decision === 'declined'
+      );
+      const negotiatingQuotes = quotes.filter(quote => 
+        quote.offerDecision && quote.offerDecision.decision === 'negotiating'
+      );
+      const pendingQuotes = quotes.filter(quote => 
+        !quote.offerDecision || quote.offerDecision.decision === 'pending'
+      );
+      
+      const totalQuoteValue = quotes.reduce((sum, quote) => sum + (quote.offerAmount || 0), 0);
+      const acceptedQuoteValue = acceptedQuotes.reduce((sum, quote) => sum + (quote.offerAmount || 0), 0);
+      const averageQuoteAmount = quotes.length > 0 ? totalQuoteValue / quotes.length : 0;
+      const quoteAcceptanceRate = quotes.length > 0 ? (acceptedQuotes.length / quotes.length) * 100 : 0;
+      
       analytics.roleSpecific = {
         customersCreated: userCases.length,
         averageCustomerValue: analytics.overview.averageCaseValue,
         conversionRate: analytics.overview.completionRate,
+        totalQuotes: quotes.length,
+        acceptedQuotes: acceptedQuotes.length,
+        declinedQuotes: declinedQuotes.length,
+        negotiatingQuotes: negotiatingQuotes.length,
+        pendingQuotes: pendingQuotes.length,
+        totalQuoteValue: totalQuoteValue,
+        acceptedQuoteValue: acceptedQuoteValue,
+        averageQuoteAmount: averageQuoteAmount,
+        quoteAcceptanceRate: quoteAcceptanceRate,
         topCustomers: userCases
           .filter(case_ => case_.customer)
           .map(case_ => ({
             customerId: case_.customer._id,
             customerName: `${case_.customer.firstName} ${case_.customer.lastName}`,
-            caseValue: case_.transaction?.billOfSale?.salePrice || 0,
-            status: case_.status
+            caseValue: case_.transaction?.billOfSale?.salePrice || case_.quote?.offerAmount || 0,
+            status: case_.status,
+            quoteAmount: case_.quote?.offerAmount || 0,
+            quoteStatus: case_.quote?.offerDecision?.decision || 'pending'
           }))
           .sort((a, b) => b.caseValue - a.caseValue)
           .slice(0, 5)
@@ -4037,7 +4086,7 @@ exports.getUserAnalytics = async (req, res) => {
         averageValue: vehicleValues.length > 0 
           ? vehicleValues.reduce((sum, value) => sum + value, 0) / vehicleValues.length 
           : 0,
-        vehicleTypes: vehicles.reduce((acc, vehicle) => {
+        valueDistribution: vehicles.reduce((acc, vehicle) => {
           // Use the correct field name from Vehicle model
           const type = vehicle.bodyStyle || 'Unknown';
           acc[type] = (acc[type] || 0) + 1;

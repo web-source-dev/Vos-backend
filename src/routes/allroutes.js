@@ -69,6 +69,12 @@ router.put('/users/:userId', protect, isAdmin, updateUser);
 router.delete('/users/:userId', protect, isAdmin, deleteUser);
 router.get('/users/all', protect, isAdmin, getAllUsers);
 router.get('/users/:userId/analytics', protect, isAdmin, getUserAnalytics);
+// Estimator-specific analytics route
+router.get('/estimator/analytics', protect, isEstimator, async (req, res) => {
+  // Set the userId to the current user's ID
+  req.params.userId = req.user._id.toString();
+  getUserAnalytics(req, res);
+});
 
 // Case management routes (protected)
 router.get('/cases', protect, getCases);

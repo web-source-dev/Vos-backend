@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const User = require('../models/User');
 
 // Email transport configuration
 let transporter;
@@ -14,6 +15,52 @@ let transporter;
   });
 
 /**
+ * Get all admin users from the database
+ * @returns {Promise<Array>} Array of admin user objects
+ */
+async function getAllAdminUsers() {
+  try {
+    const adminUsers = await User.find({ role: 'admin' }).select('email firstName lastName');
+    return adminUsers;
+  } catch (error) {
+    console.error('Error fetching admin users:', error);
+    // Fallback to environment variable if database query fails
+    const fallbackEmail = process.env.ADMIN_EMAIL || 'admin@vossystem.com';
+    return [{ email: fallbackEmail, firstName: 'Admin', lastName: 'User' }];
+  }
+}
+
+/**
+ * Send email to multiple recipients
+ * @param {Object} mailOptions - The email options
+ * @param {Array} recipients - Array of recipient objects with email property
+ * @returns {Promise} - Promise resolving to the email info
+ */
+async function sendEmailToMultipleRecipients(mailOptions, recipients) {
+  try {
+    const emailAddresses = recipients.map(recipient => recipient.email).filter(email => email);
+    
+    if (emailAddresses.length === 0) {
+      console.warn('No valid email addresses found for admin notification');
+      return null;
+    }
+
+    const multiRecipientMailOptions = {
+      ...mailOptions,
+      to: emailAddresses.join(', ')
+    };
+
+    const info = await transporter.sendMail(multiRecipientMailOptions);
+
+    
+    return info;
+  } catch (error) {
+    console.error('Error sending email to multiple recipients:', error);
+    throw error;
+  }
+}
+
+/**
  * Send email to inspector with inspection link
  * @param {Object} inspectionData - The inspection data
  * @param {Object} customerData - The customer data
@@ -22,7 +69,7 @@ let transporter;
  * @returns {Promise} - Promise resolving to the email info
  */
 async function sendInspectionEmail(inspectionData, customerData, vehicleData, baseUrl) {
-  const inspectionUrl = `${baseUrl}/inspector/${inspectionData.accessToken}`;
+  const inspectionUrl = `${baseUrl}/inspection/${inspectionData.accessToken}`;
   
   const formattedDate = new Date(inspectionData.scheduledDate).toLocaleDateString();
   const formattedDueDate = inspectionData.dueByDate ? new Date(inspectionData.dueByDate).toLocaleDateString() : 'Not specified';
@@ -64,7 +111,7 @@ async function sendInspectionEmail(inspectionData, customerData, vehicleData, ba
         
         ${inspectionData.notesForInspector ? `
           <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
-            <h3 style="color: #92400e; margin-top: 0;">Agent Notes</h3>
+            <h3 style="color: #92400e; margin-top: 0;">Note</h3>
             <p style="margin: 0; color: #92400e;">${inspectionData.notesForInspector}</p>
           </div>
         ` : ''}
@@ -78,37 +125,15 @@ async function sendInspectionEmail(inspectionData, customerData, vehicleData, ba
             Start Vehicle Inspection
           </a>
         </div>
-        
-        <p style="color: #6b7280; font-size: 14px;">Note: This link is unique to you and does not require login. Please do not share this link with others.</p>
-        
         <p>Thank you for your assistance.</p>
-        <p>VOS System Team</p>
+        <p>VIN on Spot</p>
       </div>
     `
   };
 
   try {
-    // For development, create a test account if needed
-    if (process.env.NODE_ENV !== 'production' && 
-        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-    }
-
+ 
     const info = await transporter.sendMail(mailOptions);
-    
-    // In development, log the Ethereal URL to view the email
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('Inspection Email URL: %s', nodemailer.getTestMessageUrl(info));
-    }
     
     return info;
   } catch (error) {
@@ -166,34 +191,17 @@ async function sendEstimatorEmail(quoteData, inspectionData, customerData, vehic
         </ul>
         
         <p>Thank you for your assistance.</p>
-        <p>VOS System Team</p>
+        <p>VIN on Spot</p>
       </div>
     `
   };
 
   try {
-    // For development, create a test account if needed
-    if (process.env.NODE_ENV !== 'production' && 
-        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-    }
+    
 
     const info = await transporter.sendMail(mailOptions);
     
-    // In development, log the Ethereal URL to view the email
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('Estimator Email URL: %s', nodemailer.getTestMessageUrl(info));
-    }
-    
+ 
     return info;
   } catch (error) {
     console.error('Error sending estimator email:', error);
@@ -265,28 +273,11 @@ async function sendCustomerConfirmationEmail(customerData, vehicleData, transact
   };
 
   try {
-    // For development, create a test account if needed
-    if (process.env.NODE_ENV !== 'production' && 
-        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-    }
+ 
 
     const info = await transporter.sendMail(mailOptions);
     
-    // In development, log the Ethereal URL to view the email
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('Customer Confirmation Email URL: %s', nodemailer.getTestMessageUrl(info));
-    }
-    
+  
     return info;
   } catch (error) {
     console.error('Error sending customer confirmation email:', error);
@@ -421,28 +412,11 @@ async function sendInspectionCompletedEmail(inspectionData, customerData, vehicl
   };
 
   try {
-    // For development, create a test account if needed
-    if (process.env.NODE_ENV !== 'production' && 
-        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-    }
+
 
     const info = await transporter.sendMail(mailOptions);
     
-    // In development, log the Ethereal URL to view the email
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('Inspection Completion Email URL: %s', nodemailer.getTestMessageUrl(info));
-    }
-    
+  
     return info;
   } catch (error) {
     console.error('Error sending inspection completion email:', error);
@@ -451,33 +425,17 @@ async function sendInspectionCompletedEmail(inspectionData, customerData, vehicl
 };
 
 /**
- * Helper function to handle email sending with development/production logic
+ * Helper function to handle email sending with 
  * @param {Object} mailOptions - The email options
  * @returns {Promise} - Promise resolving to the email info
  */
 async function sendEmail(mailOptions) {
   try {
-    // For development, create a test account if needed
-    if (process.env.NODE_ENV !== 'production' && 
-        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-    }
+    
 
     const info = await transporter.sendMail(mailOptions);
     
-    // In development, log the Ethereal URL to view the email
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('Email URL: %s', nodemailer.getTestMessageUrl(info));
-    }
+  
     
     return info;
   } catch (error) {
@@ -642,10 +600,10 @@ async function sendDecisionEmail(customer, vehicle, quote, baseUrl) {
   }
 };
 
-// Send customer intake notification to admin
+// Send customer intake notification to all admins
 async function sendCustomerIntakeNotification(customer, vehicle, caseData, baseUrl) {
   try {
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@vos.com';
+    const adminUsers = await getAllAdminUsers();
     
     const subject = `VIN On Spot: New Customer Intake: ${customer.firstName} ${customer.lastName}`;
     
@@ -702,7 +660,6 @@ async function sendCustomerIntakeNotification(customer, vehicle, caseData, baseU
         
         <div style="background-color: #dbeafe; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
           <h3 style="color: #1e40af; margin-top: 0;">Next Steps</h3>
-          <p style="margin-bottom: 10px;"><strong>Case ID:</strong> ${caseData._id}</p>
           <p style="margin-bottom: 10px;">This customer intake has been automatically created in the system.</p>
           <p style="margin-bottom: 15px;">Please assign an agent and proceed with the inspection scheduling.</p>
           
@@ -745,7 +702,6 @@ ${vehicle.secondSetOfKeys ? 'Second Set of Keys: Yes' : ''}
 ${vehicle.knownDefects ? `Known Defects: ${vehicle.knownDefects}` : ''}
 
 Next Steps:
-Case ID: ${caseData._id}
 This customer intake has been automatically created in the system.
 Please assign an agent and proceed with the inspection scheduling.
 
@@ -756,14 +712,13 @@ Note: This customer intake was submitted through the public form and requires ag
     
     const mailOptions = {
       from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
-      to: adminEmail,
       subject: subject,
       text: textContent,
       html: htmlContent
     };
     
-    await sendEmail(mailOptions);
-    console.log('Customer intake notification email sent to admin');
+    await sendEmailToMultipleRecipients(mailOptions, adminUsers);
+    console.log(`Customer intake notification email sent to ${adminUsers.length} admin(s)`);
     
   } catch (error) {
     console.error('Error sending customer intake notification email:', error);
@@ -825,27 +780,8 @@ const sendCustomerFormEmail = async (customerEmail, customerName, formUrl) => {
   };
 
   try {
-    // For development, create a test account if needed
-    if (process.env.NODE_ENV !== 'production' && 
-        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-    }
 
     const info = await transporter.sendMail(mailOptions);
-    
-    // In development, log the Ethereal URL to view the email
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('Customer Form Email URL: %s', nodemailer.getTestMessageUrl(info));
-    }
     
     return info;
   } catch (error) {
@@ -865,73 +801,59 @@ async function sendCustomerCreationEmail(customerData, vehicleData, baseUrl) {
   const mailOptions = {
     from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
     to: customerData.email1 || customerData.email,
-    subject: `VIN On Spot: Welcome to VOS - Your Account Has Been Created`,
+    subject: `VIN On Spot: Vehicle Intake Confirmation`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #3b82f6;">VIN On Spot: Welcome to VOS!</h2>
+        <h2 style="color: #3b82f6;">VIN On Spot: Vehicle Intake Recorded</h2>
         <p>Hello ${customerData.firstName} ${customerData.lastName},</p>
-        <p>Thank you for choosing VOS! Your account has been successfully created in our system.</p>
-        
+
+        <p>Thank you for visiting our store! One of our agents has successfully completed the intake process for you and your vehicle.</p>
+
         <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
-          <h3 style="color: #1e293b; margin-top: 0;">Your Information</h3>
+          <h3 style="color: #1e293b; margin-top: 0;">Your Details</h3>
           <p><strong>Name:</strong> ${customerData.firstName} ${customerData.middleInitial || ''} ${customerData.lastName}</p>
           <p><strong>Phone:</strong> ${customerData.cellPhone}</p>
           <p><strong>Email:</strong> ${customerData.email1 || customerData.email}</p>
           ${customerData.storeLocation ? `<p><strong>Store Location:</strong> ${customerData.storeLocation}</p>` : ''}
           ${vehicleData ? `
-            <h4 style="color: #1e293b; margin-top: 15px;">Vehicle Information</h4>
+            <h4 style="color: #1e293b; margin-top: 15px;">Vehicle Details</h4>
             <p><strong>Vehicle:</strong> ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}</p>
             <p><strong>Mileage:</strong> ${vehicleData.currentMileage}</p>
             ${vehicleData.vin ? `<p><strong>VIN:</strong> ${vehicleData.vin}</p>` : ''}
           ` : ''}
         </div>
-        
+
         <div style="background: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
-          <h3 style="color: #1e40af; margin-top: 0;">What's Next?</h3>
-          <p style="margin-bottom: 10px;">Our team will be in touch with you shortly to:</p>
+          <h3 style="color: #1e40af; margin-top: 0;">What Happens Next?</h3>
+          <p>Our team will now:</p>
           <ul style="color: #1e40af; margin: 10px 0; padding-left: 20px;">
-            <li>Schedule your vehicle inspection</li>
-            <li>Provide you with a competitive offer</li>
-            <li>Guide you through the entire process</li>
+            <li>Review your vehicle's details</li>
+            <li>Schedule a full inspection (if not already done)</li>
+            <li>Provide you with a competitive purchase offer</li>
           </ul>
         </div>
-        
-        <p>If you have any questions or need to update your information, please don't hesitate to contact us.</p>
-        
-        <p>Thank you for choosing VOS!</p>
+
+        <p>If any information above is incorrect or needs updating, feel free to reply to this email or contact us directly at your nearest VOS store.</p>
+
+        <p>We appreciate your time and look forward to helping you get the best value for your vehicle.</p>
+
         <p>Best regards,<br>The VOS Team</p>
-        
+
         <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 12px;">
-          <p>This email was sent to confirm your account creation with VOS.</p>
-          <p>If you did not expect this email, please contact us immediately.</p>
+          <p>This email confirms that your vehicle intake information has been recorded at a VOS location.</p>
+          <p>If you did not visit our store or believe this is a mistake, please contact us immediately.</p>
         </div>
       </div>
     `
   };
 
+
   try {
-    // For development, create a test account if needed
-    if (process.env.NODE_ENV !== 'production' && 
-        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-    }
+    
 
     const info = await transporter.sendMail(mailOptions);
     
-    // In development, log the Ethereal URL to view the email
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('Customer Creation Email URL: %s', nodemailer.getTestMessageUrl(info));
-    }
-    
+  
     return info;
   } catch (error) {
     console.error('Error sending customer creation email:', error);
@@ -948,16 +870,15 @@ async function sendCustomerCreationEmail(customerData, vehicleData, baseUrl) {
  * @returns {Promise} - Promise resolving to the email info
  */
 async function sendAdminCustomerCreationNotification(customerData, vehicleData, agentData, baseUrl) {
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@vos.com';
+  const adminUsers = await getAllAdminUsers();
   
   const mailOptions = {
     from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
-    to: adminEmail,
     subject: `VIN On Spot: New Customer Created: ${customerData.firstName} ${customerData.lastName}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
-          VIN On Spot: New Customer Account Created
+          VIN On Spot: New Customer Intake Recorded
         </h2>
         
         <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -992,7 +913,7 @@ async function sendAdminCustomerCreationNotification(customerData, vehicleData, 
         
         ${agentData ? `
           <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="color: #1e293b; margin-top: 0;">Assigned Agent</h3>
+            <h3 style="color: #1e293b; margin-top: 0;">Agent</h3>
             <p><strong>Agent:</strong> ${agentData.firstName} ${agentData.lastName}</p>
             <p><strong>Email:</strong> ${agentData.email}</p>
             ${agentData.location ? `<p><strong>Location:</strong> ${agentData.location}</p>` : ''}
@@ -1009,36 +930,12 @@ async function sendAdminCustomerCreationNotification(customerData, vehicleData, 
             View in Admin Dashboard
           </a>
         </div>
-        
-        <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
-          <p style="margin: 0; color: #92400e;"><strong>Note:</strong> This customer has been automatically added to the system and is ready for processing.</p>
-        </div>
       </div>
     `
   };
 
   try {
-    // For development, create a test account if needed
-    if (process.env.NODE_ENV !== 'production' && 
-        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-    }
-
-    const info = await transporter.sendMail(mailOptions);
-    
-    // In development, log the Ethereal URL to view the email
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('Admin Customer Creation Notification Email URL: %s', nodemailer.getTestMessageUrl(info));
-    }
+    const info = await sendEmailToMultipleRecipients(mailOptions, adminUsers);
     
     return info;
   } catch (error) {
@@ -1056,11 +953,10 @@ async function sendAdminCustomerCreationNotification(customerData, vehicleData, 
  * @returns {Promise} - Promise resolving to the email info
  */
 async function sendAdminInspectionCompletedNotification(inspectionData, customerData, vehicleData, baseUrl) {
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@vos.com';
+  const adminUsers = await getAllAdminUsers();
   
   const mailOptions = {
     from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
-    to: adminEmail,
     subject: `VIN On Spot: Inspection Completed: ${customerData.firstName} ${customerData.lastName} - ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -1137,27 +1033,7 @@ async function sendAdminInspectionCompletedNotification(inspectionData, customer
   };
 
   try {
-    // For development, create a test account if needed
-    if (process.env.NODE_ENV !== 'production' && 
-        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-    }
-
-    const info = await transporter.sendMail(mailOptions);
-    
-    // In development, log the Ethereal URL to view the email
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('Admin Inspection Completion Notification Email URL: %s', nodemailer.getTestMessageUrl(info));
-    }
+    const info = await sendEmailToMultipleRecipients(mailOptions, adminUsers);
     
     return info;
   } catch (error) {
@@ -1253,34 +1129,15 @@ async function sendEstimatorInspectionCompletedNotification(inspectionData, cust
         </p>
         
         <p>Thank you for your assistance.</p>
-        <p>VOS System Team</p>
+        <p>VIN on Spot</p>
       </div>
     `
   };
 
   try {
-    // For development, create a test account if needed
-    if (process.env.NODE_ENV !== 'production' && 
-        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-    }
-
+ 
     const info = await transporter.sendMail(mailOptions);
-    
-    // In development, log the Ethereal URL to view the email
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('Estimator Inspection Completion Notification Email URL: %s', nodemailer.getTestMessageUrl(info));
-    }
-    
+
     return info;
   } catch (error) {
     console.error('Error sending estimator inspection completion notification email:', error);
@@ -1335,14 +1192,6 @@ async function sendEstimatorAssignmentEmail(estimatorData, customerData, vehicle
           ${vehicleData.knownDefects ? `<p><strong>Known Defects:</strong> ${vehicleData.knownDefects}</p>` : ''}
         </div>
         
-        <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
-          <h3 style="color: #1e293b; margin-top: 0;">Case Information</h3>
-          <p><strong>Case ID:</strong> ${caseData._id}</p>
-          <p><strong>Current Stage:</strong> ${caseData.currentStage}</p>
-          <p><strong>Status:</strong> ${caseData.status}</p>
-          <p><strong>Created:</strong> ${new Date(caseData.createdAt).toLocaleDateString()}</p>
-        </div>
-        
         <div style="background: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
           <h3 style="color: #1e40af; margin-top: 0;">Next Steps</h3>
           <p style="margin-bottom: 10px;">As the assigned estimator for this case, you will be responsible for:</p>
@@ -1374,10 +1223,7 @@ async function sendEstimatorAssignmentEmail(estimatorData, customerData, vehicle
             Access Estimator Dashboard
           </a>
         </p>
-        
-        <p>Thank you for your assistance.</p>
-        <p>VOS System Team</p>
-        
+      
         <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 12px;">
           <p>This email confirms your assignment to this customer case.</p>
           <p>If you have any questions, please contact your supervisor.</p>
@@ -1387,28 +1233,7 @@ async function sendEstimatorAssignmentEmail(estimatorData, customerData, vehicle
   };
 
   try {
-    // For development, create a test account if needed
-    if (process.env.NODE_ENV !== 'production' && 
-        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-    }
-
     const info = await transporter.sendMail(mailOptions);
-    
-    // In development, log the Ethereal URL to view the email
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('Estimator Assignment Email URL: %s', nodemailer.getTestMessageUrl(info));
-    }
-    
     return info;
   } catch (error) {
     console.error('Error sending estimator assignment email:', error);

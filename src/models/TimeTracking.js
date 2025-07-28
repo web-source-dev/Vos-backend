@@ -27,7 +27,6 @@ const timeTrackingSchema = new mongoose.Schema({
         ref: 'User'
       },
       inspectorName: String,
-      
     },
     quoteAndDecision: {
       startTime: Date,

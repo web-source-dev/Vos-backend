@@ -17,13 +17,17 @@ async function updateStageTime(caseId, stageName, startTime, endTime, extraField
 
   const stageUpdate = {
     [`stageTimes.${stageName}.startTime`]: startTime,
-    [`stageTimes.${stageName}.endTime`]: endTime,
     [`stageTimes.${stageName}.totalTime`]: totalTime,
     ...Object.keys(extraFields).reduce((acc, key) => {
       acc[`stageTimes.${stageName}.${key}`] = extraFields[key];
       return acc;
     }, {})
   };
+
+  // Only set endTime if this is a completion (not a save/close)
+  if (extraFields.isCompletion !== false) {
+    stageUpdate[`stageTimes.${stageName}.endTime`] = endTime;
+  }
 
   // Get existing document to calculate the correct total time
   const existingDoc = await TimeTracking.findOne({ caseId });

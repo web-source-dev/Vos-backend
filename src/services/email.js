@@ -25,32 +25,59 @@ async function sendInspectionEmail(inspectionData, customerData, vehicleData, ba
   const inspectionUrl = `${baseUrl}/inspector/${inspectionData.accessToken}`;
   
   const formattedDate = new Date(inspectionData.scheduledDate).toLocaleDateString();
+  const formattedDueDate = inspectionData.dueByDate ? new Date(inspectionData.dueByDate).toLocaleDateString() : 'Not specified';
+  const formattedDueTime = inspectionData.dueByTime || 'Not specified';
   
   const mailOptions = {
-    from: process.env.EMAIL_FROM || '"VOS System" <no-reply@vossystem.com>',
+    from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
     to: inspectionData.inspector.email,
-    subject: `Vehicle Inspection Request - ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
+    subject: `VIN On Spot: Vehicle Inspection Request - ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #3b82f6;">Vehicle Inspection Request</h2>
+        <h2 style="color: #3b82f6;">VIN On Spot: Vehicle Inspection Request</h2>
         <p>Hello ${inspectionData.inspector.firstName} ${inspectionData.inspector.lastName},</p>
         <p>You have been assigned to inspect the following vehicle:</p>
         
         <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
-          <p><strong>Customer:</strong> ${customerData.firstName} ${customerData.lastName}</p>
-          <p><strong>Vehicle:</strong> ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}</p>
-          <p><strong>VIN:</strong> ${vehicleData.vin || 'Not provided'}</p>
-          <p><strong>Scheduled Date:</strong> ${formattedDate}</p>
-          <p><strong>Time Slot:</strong> ${inspectionData.scheduledTime}</p>
+          <h3 style="color: #1e293b; margin-top: 0;">Customer Information</h3>
+          <p><strong>Customer:</strong> ${customerData.firstName} ${customerData.middleInitial || ''} ${customerData.lastName}</p>
+          <p><strong>Phone:</strong> ${customerData.cellPhone}</p>
+          <p><strong>Email:</strong> ${customerData.email1}</p>
         </div>
         
-        <p>Please click the link below to access the inspection form:</p>
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Vehicle Information</h3>
+          <p><strong>Vehicle:</strong> ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}</p>
+          <p><strong>VIN:</strong> ${vehicleData.vin || 'Not provided'}</p>
+          <p><strong>Mileage:</strong> ${vehicleData.currentMileage}</p>
+          ${vehicleData.color ? `<p><strong>Color:</strong> ${vehicleData.color}</p>` : ''}
+          ${vehicleData.bodyStyle ? `<p><strong>Body Style:</strong> ${vehicleData.bodyStyle}</p>` : ''}
+        </div>
         
-        <p style="margin: 20px 0;">
-          <a href="${inspectionUrl}" style="background: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Inspection Schedule</h3>
+          <p><strong>Scheduled Date:</strong> ${formattedDate}</p>
+          <p><strong>Time Slot:</strong> ${inspectionData.scheduledTime}</p>
+          <p><strong>Due Date:</strong> ${formattedDueDate}</p>
+          <p><strong>Due Time:</strong> ${formattedDueTime}</p>
+        </div>
+        
+        ${inspectionData.notesForInspector ? `
+          <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+            <h3 style="color: #92400e; margin-top: 0;">Agent Notes</h3>
+            <p style="margin: 0; color: #92400e;">${inspectionData.notesForInspector}</p>
+          </div>
+        ` : ''}
+        
+        <div style="background: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+          <h3 style="color: #1e40af; margin-top: 0;">Next Steps</h3>
+          <p style="margin-bottom: 10px;">Please complete the inspection by the due date and time specified above.</p>
+          <p style="margin-bottom: 15px;">Click the button below to access the inspection form:</p>
+          
+          <a href="${inspectionUrl}" style="background: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
             Start Vehicle Inspection
           </a>
-        </p>
+        </div>
         
         <p style="color: #6b7280; font-size: 14px;">Note: This link is unique to you and does not require login. Please do not share this link with others.</p>
         
@@ -103,12 +130,12 @@ async function sendEstimatorEmail(quoteData, inspectionData, customerData, vehic
   const quoteUrl = `${baseUrl}/estimator/${quoteData.accessToken}`;
   
   const mailOptions = {
-    from: process.env.EMAIL_FROM || '"VOS System" <no-reply@vossystem.com>',
+    from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
     to: quoteData.estimator.email,
-    subject: `Quote Preparation Request - ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
+    subject: `VIN On Spot: Quote Preparation Request - ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #3b82f6;">Quote Preparation Request</h2>
+        <h2 style="color: #3b82f6;">VIN On Spot: Quote Preparation Request</h2>
         <p>Hello ${quoteData.estimator.firstName} ${quoteData.estimator.lastName},</p>
         <p>You have been assigned to prepare a quote for the following vehicle:</p>
         
@@ -191,12 +218,12 @@ async function sendCustomerConfirmationEmail(customerData, vehicleData, transact
   const billOfSale = transaction.billOfSale || {};
 
   const mailOptions = {
-    from: process.env.EMAIL_FROM || '"VOS System" <no-reply@vossystem.com>',
+    from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
     to: customer.email1 || customer.email || 'customer@example.com',
-    subject: `Vehicle Purchase Confirmation - ${vehicle.year || 'Unknown'} ${vehicle.make || 'Unknown'} ${vehicle.model || 'Unknown'}`,
+    subject: `VIN On Spot: Vehicle Purchase Confirmation - ${vehicle.year || 'Unknown'} ${vehicle.make || 'Unknown'} ${vehicle.model || 'Unknown'}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #3b82f6;">Vehicle Purchase Confirmation</h2>
+        <h2 style="color: #3b82f6;">VIN On Spot: Vehicle Purchase Confirmation</h2>
         <p>Hello ${customer.firstName || 'Valued Customer'},</p>
         <p>Thank you for selling your vehicle to VOS. Your transaction has been completed successfully!</p>
         
@@ -277,12 +304,12 @@ async function sendCustomerConfirmationEmail(customerData, vehicleData, transact
  */
 async function sendQuoteUpdateEmail(quoteData, customerData, vehicleData, baseUrl) {
   const mailOptions = {
-    from: process.env.EMAIL_FROM || '"VOS System" <no-reply@vossystem.com>',
+    from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
     to: customerData.email1,
-    subject: `Vehicle Quote Update - ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
+    subject: `VIN On Spot: Vehicle Quote Update - ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #3b82f6;">Vehicle Quote Update</h2>
+        <h2 style="color: #3b82f6;">VIN On Spot: Vehicle Quote Update</h2>
         <p>Hello ${customerData.firstName},</p>
         <p>We have an update regarding the quote for your vehicle:</p>
         
@@ -315,12 +342,12 @@ async function sendQuoteUpdateEmail(quoteData, customerData, vehicleData, baseUr
  */
 async function sendNegotiationUpdateEmail(quoteData, customerData, vehicleData, baseUrl) {
   const mailOptions = {
-    from: process.env.EMAIL_FROM || '"VOS System" <no-reply@vossystem.com>',
+    from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
     to: customerData.email1,
-    subject: `Quote Negotiation Update - ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
+    subject: `VIN On Spot: Quote Negotiation Update - ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #3b82f6;">Quote Negotiation Update</h2>
+        <h2 style="color: #3b82f6;">VIN On Spot: Quote Negotiation Update</h2>
         <p>Hello ${customerData.firstName},</p>
         
         <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
@@ -357,12 +384,12 @@ async function sendNegotiationUpdateEmail(quoteData, customerData, vehicleData, 
  */
 async function sendInspectionCompletedEmail(inspectionData, customerData, vehicleData, baseUrl) {
   const mailOptions = {
-    from: process.env.EMAIL_FROM || '"VOS System" <no-reply@vossystem.com>',
+    from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
     to: customerData.email1,
-    subject: `Vehicle Inspection Completed - ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
+    subject: `VIN On Spot: Vehicle Inspection Completed - ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #3b82f6;">Vehicle Inspection Complete</h2>
+        <h2 style="color: #3b82f6;">VIN On Spot: Vehicle Inspection Complete</h2>
         <p>Hello ${customerData.firstName},</p>
         <p>The inspection of your vehicle has been completed. Here are the details:</p>
         
@@ -465,26 +492,52 @@ async function sendQuoteEmail(customer, vehicle, quote, baseUrl) {
     const offerAmount = quote.offerAmount ? quote.offerAmount.toLocaleString() : 'N/A';
     const expiryDate = quote.expiryDate ? new Date(quote.expiryDate).toLocaleDateString() : 'N/A';
     
-    const emailContent = `
-      <h2>Your Vehicle Offer</h2>
-      <p>Dear ${customer.firstName} ${customer.lastName},</p>
-      <p>We're pleased to present you with an offer for your ${vehicle.year} ${vehicle.make} ${vehicle.model}.</p>
-      
-      <div style="background-color: #f5f5f5; padding: 20px; margin: 20px 0; border-radius: 5px;">
-        <h3 style="color: #2d8a2d; margin-top: 0;">Offer Amount: $${offerAmount}</h3>
-        <p>This offer is valid until: ${expiryDate}</p>
-      </div>
-      
-      <p>To accept or decline this offer, please visit our website or contact us directly.</p>
-      
-      <p>Thank you for choosing our service.</p>
-      <p>Best regards,<br>The VOS Team</p>
-    `;
-    
-    // Send the email (implementation depends on your email provider)
-    // This is a placeholder for the actual email sending logic
-    console.log(`Sending quote email to ${customer.email1} for vehicle ${vehicle.year} ${vehicle.make} ${vehicle.model}`);
-    
+    const mailOptions = {
+      from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
+      to: customer.email1,
+      subject: `VIN On Spot: Vehicle Offer - ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #3b82f6;">VIN On Spot: Your Vehicle Offer</h2>
+          <p>Dear ${customer.firstName} ${customer.lastName},</p>
+          <p>We're pleased to present you with an offer for your ${vehicle.year} ${vehicle.make} ${vehicle.model}.</p>
+          
+          <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <h3 style="color: #059669; margin-top: 0;">Offer Amount: $${offerAmount}</h3>
+            <p><strong>Valid Until:</strong> ${expiryDate}</p>
+            ${quote.notes ? `<p><strong>Additional Notes:</strong> ${quote.notes}</p>` : ''}
+          </div>
+          
+          <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <h3 style="color: #1e293b; margin-top: 0;">Vehicle Information</h3>
+            <p><strong>Vehicle:</strong> ${vehicle.year} ${vehicle.make} ${vehicle.model}</p>
+            <p><strong>Mileage:</strong> ${vehicle.currentMileage}</p>
+            ${vehicle.vin ? `<p><strong>VIN:</strong> ${vehicle.vin}</p>` : ''}
+            ${vehicle.color ? `<p><strong>Color:</strong> ${vehicle.color}</p>` : ''}
+          </div>
+          
+          <div style="background: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+            <h3 style="color: #1e40af; margin-top: 0;">Next Steps</h3>
+            <p style="margin-bottom: 10px;">To accept or decline this offer, please:</p>
+            <ul style="color: #1e40af; margin: 10px 0; padding-left: 20px;">
+              <li>Contact us directly at (555) 123-4567</li>
+              <li>Reply to this email with your decision</li>
+              <li>Visit our office to discuss the offer</li>
+            </ul>
+          </div>
+          
+          <p>Thank you for choosing VOS!</p>
+          <p>Best regards,<br>The VOS Team</p>
+          
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 12px;">
+            <p>This offer is valid until ${expiryDate}. Please contact us before this date to proceed.</p>
+          </div>
+        </div>
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+
     return {
       success: true,
       message: `Quote email sent to ${customer.email1}`
@@ -501,11 +554,12 @@ async function sendDecisionEmail(customer, vehicle, quote, baseUrl) {
     const offerAmount = quote.offerAmount ? quote.offerAmount.toLocaleString() : 'N/A';
     const decision = quote.offerDecision?.decision || 'pending';
     
-    let subject, heading, message;
+    let subject, heading, message, statusColor;
     
     if (decision === 'accepted') {
-      subject = 'Your Offer Acceptance Confirmation';
-      heading = 'Offer Acceptance Confirmed';
+      subject = 'VIN On Spot: Your Offer Acceptance Confirmation';
+      heading = 'VIN On Spot: Offer Acceptance Confirmed';
+      statusColor = '#059669';
       message = `
         <p>We're pleased to confirm that you've accepted our offer of $${offerAmount} for your ${vehicle.year} ${vehicle.make} ${vehicle.model}.</p>
         <p>Next steps:</p>
@@ -516,33 +570,68 @@ async function sendDecisionEmail(customer, vehicle, quote, baseUrl) {
         </ol>
       `;
     } else if (decision === 'declined') {
-      subject = 'Your Offer Decision Confirmation';
-      heading = 'Offer Decline Confirmed';
+      subject = 'VIN On Spot: Your Offer Decision Confirmation';
+      heading = 'VIN On Spot: Offer Decline Confirmed';
+      statusColor = '#dc2626';
       message = `
         <p>We confirm that you've declined our offer of $${offerAmount} for your ${vehicle.year} ${vehicle.make} ${vehicle.model}.</p>
         <p>We appreciate your consideration and would be happy to assist you in the future if you change your mind.</p>
       `;
     } else {
-      subject = 'Your Offer Status Update';
-      heading = 'Offer Status Update';
+      subject = 'VIN On Spot: Your Offer Status Update';
+      heading = 'VIN On Spot: Offer Status Update';
+      statusColor = '#f59e0b';
       message = `
         <p>This email confirms the current status of our offer of $${offerAmount} for your ${vehicle.year} ${vehicle.make} ${vehicle.model}.</p>
         <p>If you have any questions or would like to discuss the offer further, please don't hesitate to contact us.</p>
       `;
     }
     
-    const emailContent = `
-      <h2>${heading}</h2>
-      <p>Dear ${customer.firstName} ${customer.lastName},</p>
-      ${message}
-      <p>Thank you for choosing our service.</p>
-      <p>Best regards,<br>The VOS Team</p>
-    `;
-    
-    // Send the email (implementation depends on your email provider)
-    // This is a placeholder for the actual email sending logic
-    console.log(`Sending decision email to ${customer.email1} for vehicle ${vehicle.year} ${vehicle.make} ${vehicle.model}`);
-    
+    const mailOptions = {
+      from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
+      to: customer.email1,
+      subject: subject,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #3b82f6;">${heading}</h2>
+          <p>Dear ${customer.firstName} ${customer.lastName},</p>
+          
+          <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <h3 style="color: #1e293b; margin-top: 0;">Vehicle Information</h3>
+            <p><strong>Vehicle:</strong> ${vehicle.year} ${vehicle.make} ${vehicle.model}</p>
+            <p><strong>Mileage:</strong> ${vehicle.currentMileage}</p>
+            ${vehicle.vin ? `<p><strong>VIN:</strong> ${vehicle.vin}</p>` : ''}
+            <p><strong>Offer Amount:</strong> $${offerAmount}</p>
+            <p><strong>Status:</strong> <span style="color: ${statusColor}; font-weight: bold;">${decision.toUpperCase()}</span></p>
+          </div>
+          
+          <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            ${message}
+          </div>
+          
+          ${decision === 'accepted' ? `
+            <div style="background: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+              <h3 style="color: #1e40af; margin-top: 0;">What Happens Next?</h3>
+              <p style="margin-bottom: 10px;">Our team will be in touch with you shortly to:</p>
+              <ul style="color: #1e40af; margin: 10px 0; padding-left: 20px;">
+                <li>Schedule the final paperwork and payment</li>
+                <li>Coordinate vehicle pickup</li>
+                <li>Process your payment</li>
+                <li>Complete the title transfer</li>
+              </ul>
+            </div>
+          ` : ''}
+          
+          <p>Thank you for choosing VOS!</p>
+          <p>Best regards,<br>The VOS Team</p>
+          
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 12px;">
+            <p>If you have any questions, please contact us at (555) 123-4567 or reply to this email.</p>
+          </div>
+        </div>
+      `
+    };
+
     return {
       success: true,
       message: `Decision email sent to ${customer.email1}`
@@ -553,97 +642,12 @@ async function sendDecisionEmail(customer, vehicle, quote, baseUrl) {
   }
 };
 
-/**
- * Send email confirming document has been signed
- * @param {String} recipientEmail - Customer's email
- * @param {String} recipientName - Customer's name
- * @param {Object} vehicleData - Vehicle data
- * @param {String} signedDocumentUrl - URL to download the signed document
- * @param {String} documentType - Type of document that was signed
- * @returns {Promise} - Promise resolving to the email info
- */
-async function sendSigningCompletionEmail(
-  recipientEmail,
-  recipientName,
-  vehicleData,
-  signedDocumentUrl,
-  documentType
-) {
-  // Format document type for display
-  const formattedDocumentType = documentType
-    .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
-
-  const mailOptions = {
-    from: process.env.EMAIL_FROM || '"VOS System" <no-reply@vossystem.com>',
-    to: recipientEmail,
-    subject: `${formattedDocumentType} Signed Successfully - ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #3b82f6;">Document Signed Successfully</h2>
-        <p>Hello ${recipientName},</p>
-        <p>Thank you for signing the ${formattedDocumentType} for your vehicle:</p>
-        
-        <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
-          <p><strong>Vehicle:</strong> ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}</p>
-          <p><strong>VIN:</strong> ${vehicleData.vin || 'Not provided'}</p>
-          <p><strong>Document:</strong> ${formattedDocumentType}</p>
-          <p><strong>Signed Date:</strong> ${new Date().toLocaleDateString()}</p>
-        </div>
-        
-        <p>You can download a copy of your signed document by clicking the button below:</p>
-        
-        <p style="margin: 20px 0;">
-          <a href="${signedDocumentUrl}" style="background: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
-            Download Signed Document
-          </a>
-        </p>
-        
-        <p>If you have any questions about this document or the next steps in the process, please don't hesitate to contact us.</p>
-        
-        <p>Thank you for choosing VOS!</p>
-        <p>The VOS Team</p>
-      </div>
-    `
-  };
-
-  try {
-    // For development, create a test account if needed
-    if (process.env.NODE_ENV !== 'production' && 
-        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-    }
-
-    const info = await transporter.sendMail(mailOptions);
-    
-    // In development, log the Ethereal URL to view the email
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('Signing Completion Email URL: %s', nodemailer.getTestMessageUrl(info));
-    }
-    
-    return info;
-  } catch (error) {
-    console.error('Error sending signing completion email:', error);
-    throw error;
-  }
-}; 
-
 // Send customer intake notification to admin
 async function sendCustomerIntakeNotification(customer, vehicle, caseData, baseUrl) {
   try {
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@vos.com';
     
-    const subject = `New Customer Intake: ${customer.firstName} ${customer.lastName}`;
+    const subject = `VIN On Spot: New Customer Intake: ${customer.firstName} ${customer.lastName}`;
     
     // Add the source information to the email context
     function getSourceLabel(sourceKey) {
@@ -666,7 +670,7 @@ async function sendCustomerIntakeNotification(customer, vehicle, caseData, baseU
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
-          New Customer Intake Submission
+          VIN On Spot: New Customer Intake Submission
         </h2>
         
         <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -751,7 +755,7 @@ Note: This customer intake was submitted through the public form and requires ag
     `;
     
     const mailOptions = {
-      from: process.env.EMAIL_FROM,
+      from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
       to: adminEmail,
       subject: subject,
       text: textContent,
@@ -776,12 +780,12 @@ Note: This customer intake was submitted through the public form and requires ag
  */
 const sendCustomerFormEmail = async (customerEmail, customerName, formUrl) => {
   const mailOptions = {
-    from: process.env.EMAIL_FROM || '"VOS System" <no-reply@vossystem.com>',
+      from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
     to: customerEmail,
-    subject: 'Complete Your Vehicle Information - VOS',
+    subject: 'VIN On Spot: Complete Your Vehicle Information',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #3b82f6;">Complete Your Vehicle Information</h2>
+        <h2 style="color: #3b82f6;">VIN On Spot: Complete Your Vehicle Information</h2>
         <p>Hello ${customerName},</p>
         <p>Thank you for your interest in selling your vehicle to VOS. To help us provide you with the best possible offer, we need some additional information about your vehicle.</p>
         
@@ -850,6 +854,568 @@ const sendCustomerFormEmail = async (customerEmail, customerName, formUrl) => {
   }
 };
 
+/**
+ * Send customer creation confirmation email
+ * @param {Object} customerData - The customer data
+ * @param {Object} vehicleData - The vehicle data (optional)
+ * @param {String} baseUrl - The base URL for the application
+ * @returns {Promise} - Promise resolving to the email info
+ */
+async function sendCustomerCreationEmail(customerData, vehicleData, baseUrl) {
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
+    to: customerData.email1 || customerData.email,
+    subject: `VIN On Spot: Welcome to VOS - Your Account Has Been Created`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #3b82f6;">VIN On Spot: Welcome to VOS!</h2>
+        <p>Hello ${customerData.firstName} ${customerData.lastName},</p>
+        <p>Thank you for choosing VOS! Your account has been successfully created in our system.</p>
+        
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Your Information</h3>
+          <p><strong>Name:</strong> ${customerData.firstName} ${customerData.middleInitial || ''} ${customerData.lastName}</p>
+          <p><strong>Phone:</strong> ${customerData.cellPhone}</p>
+          <p><strong>Email:</strong> ${customerData.email1 || customerData.email}</p>
+          ${customerData.storeLocation ? `<p><strong>Store Location:</strong> ${customerData.storeLocation}</p>` : ''}
+          ${vehicleData ? `
+            <h4 style="color: #1e293b; margin-top: 15px;">Vehicle Information</h4>
+            <p><strong>Vehicle:</strong> ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}</p>
+            <p><strong>Mileage:</strong> ${vehicleData.currentMileage}</p>
+            ${vehicleData.vin ? `<p><strong>VIN:</strong> ${vehicleData.vin}</p>` : ''}
+          ` : ''}
+        </div>
+        
+        <div style="background: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+          <h3 style="color: #1e40af; margin-top: 0;">What's Next?</h3>
+          <p style="margin-bottom: 10px;">Our team will be in touch with you shortly to:</p>
+          <ul style="color: #1e40af; margin: 10px 0; padding-left: 20px;">
+            <li>Schedule your vehicle inspection</li>
+            <li>Provide you with a competitive offer</li>
+            <li>Guide you through the entire process</li>
+          </ul>
+        </div>
+        
+        <p>If you have any questions or need to update your information, please don't hesitate to contact us.</p>
+        
+        <p>Thank you for choosing VOS!</p>
+        <p>Best regards,<br>The VOS Team</p>
+        
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 12px;">
+          <p>This email was sent to confirm your account creation with VOS.</p>
+          <p>If you did not expect this email, please contact us immediately.</p>
+        </div>
+      </div>
+    `
+  };
+
+  try {
+    // For development, create a test account if needed
+    if (process.env.NODE_ENV !== 'production' && 
+        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
+      const testAccount = await nodemailer.createTestAccount();
+      transporter = nodemailer.createTransport({
+        host: 'smtp.ethereal.email',
+        port: 587,
+        secure: false,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass,
+        },
+      });
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    
+    // In development, log the Ethereal URL to view the email
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Customer Creation Email URL: %s', nodemailer.getTestMessageUrl(info));
+    }
+    
+    return info;
+  } catch (error) {
+    console.error('Error sending customer creation email:', error);
+    throw error;
+  }
+};
+
+/**
+ * Send admin notification about new customer creation
+ * @param {Object} customerData - The customer data
+ * @param {Object} vehicleData - The vehicle data (optional)
+ * @param {Object} agentData - The agent data (optional)
+ * @param {String} baseUrl - The base URL for the application
+ * @returns {Promise} - Promise resolving to the email info
+ */
+async function sendAdminCustomerCreationNotification(customerData, vehicleData, agentData, baseUrl) {
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@vos.com';
+  
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
+    to: adminEmail,
+    subject: `VIN On Spot: New Customer Created: ${customerData.firstName} ${customerData.lastName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
+          VIN On Spot: New Customer Account Created
+        </h2>
+        
+        <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Customer Information</h3>
+          <p><strong>Name:</strong> ${customerData.firstName} ${customerData.middleInitial || ''} ${customerData.lastName}</p>
+          <p><strong>Phone:</strong> ${customerData.cellPhone}</p>
+          <p><strong>Email:</strong> ${customerData.email1 || customerData.email}</p>
+          ${customerData.homePhone ? `<p><strong>Home Phone:</strong> ${customerData.homePhone}</p>` : ''}
+          ${customerData.email2 ? `<p><strong>Secondary Email:</strong> ${customerData.email2}</p>` : ''}
+          ${customerData.hearAboutVOS ? `<p><strong>Heard about VOS:</strong> ${customerData.hearAboutVOS}</p>` : ''}
+          ${customerData.source ? `<p><strong>Source:</strong> ${customerData.source}</p>` : ''}
+          ${customerData.receivedOtherQuote ? `<p><strong>Other Quote:</strong> ${customerData.otherQuoteOfferer} - $${customerData.otherQuoteAmount}</p>` : ''}
+          ${customerData.notes ? `<p><strong>Notes:</strong> ${customerData.notes}</p>` : ''}
+          ${customerData.storeLocation ? `<p><strong>Store Location:</strong> ${customerData.storeLocation}</p>` : ''}
+        </div>
+        
+        ${vehicleData ? `
+          <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="color: #1e293b; margin-top: 0;">Vehicle Information</h3>
+            <p><strong>Vehicle:</strong> ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}</p>
+            <p><strong>Mileage:</strong> ${vehicleData.currentMileage}</p>
+            ${vehicleData.vin ? `<p><strong>VIN:</strong> ${vehicleData.vin}</p>` : ''}
+            ${vehicleData.color ? `<p><strong>Color:</strong> ${vehicleData.color}</p>` : ''}
+            ${vehicleData.bodyStyle ? `<p><strong>Body Style:</strong> ${vehicleData.bodyStyle}</p>` : ''}
+            <p><strong>Title Status:</strong> ${vehicleData.titleStatus}</p>
+            <p><strong>Loan Status:</strong> ${vehicleData.loanStatus}</p>
+            ${vehicleData.loanStatus === 'still-has-loan' && vehicleData.loanAmount ? `<p><strong>Loan Amount:</strong> $${vehicleData.loanAmount}</p>` : ''}
+            ${vehicleData.secondSetOfKeys ? '<p><strong>Second Set of Keys:</strong> Yes</p>' : ''}
+            ${vehicleData.knownDefects ? `<p><strong>Known Defects:</strong> ${vehicleData.knownDefects}</p>` : ''}
+          </div>
+        ` : ''}
+        
+        ${agentData ? `
+          <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="color: #1e293b; margin-top: 0;">Assigned Agent</h3>
+            <p><strong>Agent:</strong> ${agentData.firstName} ${agentData.lastName}</p>
+            <p><strong>Email:</strong> ${agentData.email}</p>
+            ${agentData.location ? `<p><strong>Location:</strong> ${agentData.location}</p>` : ''}
+          </div>
+        ` : ''}
+        
+        <div style="background-color: #dbeafe; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
+          <h3 style="color: #1e40af; margin-top: 0;">Next Steps</h3>
+          <p style="margin-bottom: 10px;">A new customer account has been created in the system.</p>
+          ${!agentData ? '<p style="margin-bottom: 15px; color: #dc2626;"><strong>Action Required:</strong> Please assign an agent to this customer.</p>' : ''}
+          
+          <a href="${baseUrl}/admin/customers" 
+             style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+            View in Admin Dashboard
+          </a>
+        </div>
+        
+        <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+          <p style="margin: 0; color: #92400e;"><strong>Note:</strong> This customer has been automatically added to the system and is ready for processing.</p>
+        </div>
+      </div>
+    `
+  };
+
+  try {
+    // For development, create a test account if needed
+    if (process.env.NODE_ENV !== 'production' && 
+        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
+      const testAccount = await nodemailer.createTestAccount();
+      transporter = nodemailer.createTransport({
+        host: 'smtp.ethereal.email',
+        port: 587,
+        secure: false,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass,
+        },
+      });
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    
+    // In development, log the Ethereal URL to view the email
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Admin Customer Creation Notification Email URL: %s', nodemailer.getTestMessageUrl(info));
+    }
+    
+    return info;
+  } catch (error) {
+    console.error('Error sending admin customer creation notification email:', error);
+    throw error;
+  }
+};
+
+/**
+ * Send admin notification about completed inspection
+ * @param {Object} inspectionData - The inspection data
+ * @param {Object} customerData - The customer data
+ * @param {Object} vehicleData - The vehicle data
+ * @param {String} baseUrl - The base URL for the application
+ * @returns {Promise} - Promise resolving to the email info
+ */
+async function sendAdminInspectionCompletedNotification(inspectionData, customerData, vehicleData, baseUrl) {
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@vos.com';
+  
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
+    to: adminEmail,
+    subject: `VIN On Spot: Inspection Completed: ${customerData.firstName} ${customerData.lastName} - ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
+          VIN On Spot: Vehicle Inspection Completed
+        </h2>
+        
+        <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Customer Information</h3>
+          <p><strong>Name:</strong> ${customerData.firstName} ${customerData.middleInitial || ''} ${customerData.lastName}</p>
+          <p><strong>Phone:</strong> ${customerData.cellPhone}</p>
+          <p><strong>Email:</strong> ${customerData.email1}</p>
+        </div>
+        
+        <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Vehicle Information</h3>
+          <p><strong>Vehicle:</strong> ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}</p>
+          <p><strong>VIN:</strong> ${vehicleData.vin || 'Not provided'}</p>
+          <p><strong>Mileage:</strong> ${vehicleData.currentMileage}</p>
+        </div>
+        
+        <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Inspection Details</h3>
+          <p><strong>Inspector:</strong> ${inspectionData.inspector.firstName} ${inspectionData.inspector.lastName}</p>
+          <p><strong>Overall Rating:</strong> ${inspectionData.overallRating}/5</p>
+          <p><strong>Overall Score:</strong> ${inspectionData.overallScore}/${inspectionData.maxPossibleScore}</p>
+          <p><strong>Completed On:</strong> ${new Date(inspectionData.completedAt).toLocaleDateString()}</p>
+          <p><strong>Status:</strong> <span style="color: #059669; font-weight: bold;">Completed</span></p>
+        </div>
+        
+        <div style="margin: 20px 0;">
+          <h3 style="color: #4b5563;">Inspection Summary</h3>
+          ${inspectionData.sections.map(section => `
+            <div style="margin: 10px 0; padding: 10px; border: 1px solid #e5e7eb; border-radius: 5px;">
+              <p style="margin: 0;"><strong>${section.name}:</strong> ${section.rating}/5 (Score: ${section.score}/${section.maxScore})</p>
+              ${section.notes ? `<p style="margin: 5px 0; color: #6b7280;">${section.notes}</p>` : ''}
+              ${section.photos?.length ? `<p style="margin: 5px 0; color: #6b7280;">${section.photos.length} photos taken</p>` : ''}
+            </div>
+          `).join('')}
+        </div>
+        
+        ${inspectionData.inspectionNotes ? `
+          <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+            <h4 style="color: #92400e; margin-top: 0;">Inspector Notes</h4>
+            <p style="margin: 0; color: #92400e;">${inspectionData.inspectionNotes}</p>
+          </div>
+        ` : ''}
+        
+        ${inspectionData.recommendations && inspectionData.recommendations.length > 0 ? `
+          <div style="background-color: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+            <h4 style="color: #1e40af; margin-top: 0;">Recommendations</h4>
+            <ul style="color: #1e40af; margin: 10px 0; padding-left: 20px;">
+              ${inspectionData.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+            </ul>
+          </div>
+        ` : ''}
+        
+        <div style="background-color: #dbeafe; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
+          <h3 style="color: #1e40af; margin-top: 0;">Next Steps</h3>
+          <p style="margin-bottom: 10px;">The inspection has been completed successfully. The case is now ready for quote preparation.</p>
+          <p style="margin-bottom: 15px;"><strong>Action Required:</strong> Please assign an estimator to prepare the quote.</p>
+          
+          <a href="${baseUrl}/admin/customers" 
+             style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+            View in Admin Dashboard
+          </a>
+        </div>
+        
+        <div style="background-color: #f0fdf4; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #22c55e;">
+          <p style="margin: 0; color: #166534;"><strong>Note:</strong> The customer has been automatically notified about the completed inspection.</p>
+        </div>
+      </div>
+    `
+  };
+
+  try {
+    // For development, create a test account if needed
+    if (process.env.NODE_ENV !== 'production' && 
+        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
+      const testAccount = await nodemailer.createTestAccount();
+      transporter = nodemailer.createTransport({
+        host: 'smtp.ethereal.email',
+        port: 587,
+        secure: false,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass,
+        },
+      });
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    
+    // In development, log the Ethereal URL to view the email
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Admin Inspection Completion Notification Email URL: %s', nodemailer.getTestMessageUrl(info));
+    }
+    
+    return info;
+  } catch (error) {
+    console.error('Error sending admin inspection completion notification email:', error);
+    throw error;
+  }
+};
+
+/**
+ * Send estimator notification about completed inspection
+ * @param {Object} inspectionData - The inspection data
+ * @param {Object} customerData - The customer data
+ * @param {Object} vehicleData - The vehicle data
+ * @param {Object} estimatorData - The estimator data
+ * @param {String} baseUrl - The base URL for the application
+ * @returns {Promise} - Promise resolving to the email info
+ */
+async function sendEstimatorInspectionCompletedNotification(inspectionData, customerData, vehicleData, estimatorData, baseUrl) {
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
+    to: estimatorData.email,
+    subject: `VIN On Spot: Inspection Completed - Ready for Quote: ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #3b82f6;">VIN On Spot: Inspection Completed - Ready for Quote</h2>
+        <p>Hello ${estimatorData.firstName} ${estimatorData.lastName},</p>
+        <p>The vehicle inspection has been completed and is now ready for quote preparation.</p>
+        
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Customer Information</h3>
+          <p><strong>Name:</strong> ${customerData.firstName} ${customerData.middleInitial || ''} ${customerData.lastName}</p>
+          <p><strong>Phone:</strong> ${customerData.cellPhone}</p>
+          <p><strong>Email:</strong> ${customerData.email1}</p>
+        </div>
+        
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Vehicle Information</h3>
+          <p><strong>Vehicle:</strong> ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}</p>
+          <p><strong>VIN:</strong> ${vehicleData.vin || 'Not provided'}</p>
+          <p><strong>Mileage:</strong> ${vehicleData.currentMileage}</p>
+        </div>
+        
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Inspection Results</h3>
+          <p><strong>Inspector:</strong> ${inspectionData.inspector.firstName} ${inspectionData.inspector.lastName}</p>
+          <p><strong>Overall Rating:</strong> ${inspectionData.overallRating}/5</p>
+          <p><strong>Overall Score:</strong> ${inspectionData.overallScore}/${inspectionData.maxPossibleScore}</p>
+          <p><strong>Completed On:</strong> ${new Date(inspectionData.completedAt).toLocaleDateString()}</p>
+        </div>
+        
+        <div style="margin: 20px 0;">
+          <h3 style="color: #4b5563;">Inspection Summary</h3>
+          ${inspectionData.sections.map(section => `
+            <div style="margin: 10px 0; padding: 10px; border: 1px solid #e5e7eb; border-radius: 5px;">
+              <p style="margin: 0;"><strong>${section.name}:</strong> ${section.rating}/5 (Score: ${section.score}/${section.maxScore})</p>
+              ${section.notes ? `<p style="margin: 5px 0; color: #6b7280;">${section.notes}</p>` : ''}
+              ${section.photos?.length ? `<p style="margin: 5px 0; color: #6b7280;">${section.photos.length} photos taken</p>` : ''}
+            </div>
+          `).join('')}
+        </div>
+        
+        ${inspectionData.inspectionNotes ? `
+          <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+            <h4 style="color: #92400e; margin-top: 0;">Inspector Notes</h4>
+            <p style="margin: 0; color: #92400e;">${inspectionData.inspectionNotes}</p>
+          </div>
+        ` : ''}
+        
+        ${inspectionData.recommendations && inspectionData.recommendations.length > 0 ? `
+          <div style="background-color: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+            <h4 style="color: #1e40af; margin-top: 0;">Recommendations</h4>
+            <ul style="color: #1e40af; margin: 10px 0; padding-left: 20px;">
+              ${inspectionData.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+            </ul>
+          </div>
+        ` : ''}
+        
+        <div style="background: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+          <h3 style="color: #1e40af; margin-top: 0;">Next Steps</h3>
+          <p style="margin-bottom: 10px;">The inspection is complete and ready for quote preparation. Please:</p>
+          <ul style="color: #1e40af; margin: 10px 0; padding-left: 20px;">
+            <li>Review the inspection results and photos</li>
+            <li>Prepare a competitive quote based on the vehicle condition</li>
+            <li>Contact the customer to discuss the offer</li>
+            <li>Complete the quote preparation workflow</li>
+          </ul>
+        </div>
+        
+        <p style="margin: 20px 0;">
+          <a href="${baseUrl}/estimator" style="background: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+            Access Estimator Dashboard
+          </a>
+        </p>
+        
+        <p>Thank you for your assistance.</p>
+        <p>VOS System Team</p>
+      </div>
+    `
+  };
+
+  try {
+    // For development, create a test account if needed
+    if (process.env.NODE_ENV !== 'production' && 
+        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
+      const testAccount = await nodemailer.createTestAccount();
+      transporter = nodemailer.createTransport({
+        host: 'smtp.ethereal.email',
+        port: 587,
+        secure: false,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass,
+        },
+      });
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    
+    // In development, log the Ethereal URL to view the email
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Estimator Inspection Completion Notification Email URL: %s', nodemailer.getTestMessageUrl(info));
+    }
+    
+    return info;
+  } catch (error) {
+    console.error('Error sending estimator inspection completion notification email:', error);
+    throw error;
+  }
+};
+
+/**
+ * Send estimator assignment notification email
+ * @param {Object} estimatorData - The estimator data
+ * @param {Object} customerData - The customer data
+ * @param {Object} vehicleData - The vehicle data
+ * @param {Object} caseData - The case data
+ * @param {String} baseUrl - The base URL for the application
+ * @returns {Promise} - Promise resolving to the email info
+ */
+async function sendEstimatorAssignmentEmail(estimatorData, customerData, vehicleData, caseData, baseUrl) {
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
+    to: estimatorData.email,
+    subject: `VIN On Spot: New Customer Assignment - ${customerData.firstName} ${customerData.lastName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #3b82f6;">VIN On Spot: New Customer Assignment</h2>
+        <p>Hello ${estimatorData.firstName} ${estimatorData.lastName},</p>
+        <p>You have been assigned to a new customer case. Here are the details:</p>
+        
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Customer Information</h3>
+          <p><strong>Name:</strong> ${customerData.firstName} ${customerData.middleInitial || ''} ${customerData.lastName}</p>
+          <p><strong>Phone:</strong> ${customerData.cellPhone}</p>
+          <p><strong>Email:</strong> ${customerData.email1}</p>
+          ${customerData.homePhone ? `<p><strong>Home Phone:</strong> ${customerData.homePhone}</p>` : ''}
+          ${customerData.email2 ? `<p><strong>Secondary Email:</strong> ${customerData.email2}</p>` : ''}
+          ${customerData.hearAboutVOS ? `<p><strong>Heard about VOS:</strong> ${customerData.hearAboutVOS}</p>` : ''}
+          ${customerData.source ? `<p><strong>Source:</strong> ${customerData.source}</p>` : ''}
+          ${customerData.receivedOtherQuote ? `<p><strong>Other Quote:</strong> ${customerData.otherQuoteOfferer} - $${customerData.otherQuoteAmount}</p>` : ''}
+          ${customerData.notes ? `<p><strong>Notes:</strong> ${customerData.notes}</p>` : ''}
+        </div>
+        
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Vehicle Information</h3>
+          <p><strong>Vehicle:</strong> ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}</p>
+          <p><strong>Mileage:</strong> ${vehicleData.currentMileage}</p>
+          ${vehicleData.vin ? `<p><strong>VIN:</strong> ${vehicleData.vin}</p>` : ''}
+          ${vehicleData.color ? `<p><strong>Color:</strong> ${vehicleData.color}</p>` : ''}
+          ${vehicleData.bodyStyle ? `<p><strong>Body Style:</strong> ${vehicleData.bodyStyle}</p>` : ''}
+          <p><strong>Title Status:</strong> ${vehicleData.titleStatus}</p>
+          <p><strong>Loan Status:</strong> ${vehicleData.loanStatus}</p>
+          ${vehicleData.loanStatus === 'still-has-loan' && vehicleData.loanAmount ? `<p><strong>Loan Amount:</strong> $${vehicleData.loanAmount}</p>` : ''}
+          ${vehicleData.secondSetOfKeys ? '<p><strong>Second Set of Keys:</strong> Yes</p>' : ''}
+          ${vehicleData.knownDefects ? `<p><strong>Known Defects:</strong> ${vehicleData.knownDefects}</p>` : ''}
+        </div>
+        
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Case Information</h3>
+          <p><strong>Case ID:</strong> ${caseData._id}</p>
+          <p><strong>Current Stage:</strong> ${caseData.currentStage}</p>
+          <p><strong>Status:</strong> ${caseData.status}</p>
+          <p><strong>Created:</strong> ${new Date(caseData.createdAt).toLocaleDateString()}</p>
+        </div>
+        
+        <div style="background: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+          <h3 style="color: #1e40af; margin-top: 0;">Next Steps</h3>
+          <p style="margin-bottom: 10px;">As the assigned estimator for this case, you will be responsible for:</p>
+          <ul style="color: #1e40af; margin: 10px 0; padding-left: 20px;">
+            <li>Reviewing the vehicle inspection results (once completed)</li>
+            <li>Preparing a competitive quote based on market conditions</li>
+            <li>Presenting the offer to the customer</li>
+            <li>Handling negotiations and finalizing the deal</li>
+            <li>Completing all necessary paperwork</li>
+          </ul>
+        </div>
+        
+        ${caseData.inspection ? `
+          <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+            <p style="margin: 0; color: #92400e;">
+              <strong>Note:</strong> An inspection has already been scheduled for this vehicle. You will receive another notification once the inspection is completed.
+            </p>
+          </div>
+        ` : `
+          <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+            <p style="margin: 0; color: #92400e;">
+              <strong>Note:</strong> An inspection needs to be scheduled for this vehicle. Please coordinate with the inspection team.
+            </p>
+          </div>
+        `}
+        
+        <p style="margin: 20px 0;">
+          <a href="${baseUrl}/estimator" style="background: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+            Access Estimator Dashboard
+          </a>
+        </p>
+        
+        <p>Thank you for your assistance.</p>
+        <p>VOS System Team</p>
+        
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 12px;">
+          <p>This email confirms your assignment to this customer case.</p>
+          <p>If you have any questions, please contact your supervisor.</p>
+        </div>
+      </div>
+    `
+  };
+
+  try {
+    // For development, create a test account if needed
+    if (process.env.NODE_ENV !== 'production' && 
+        (!transporter.options.auth.user || transporter.options.auth.user === 'ethereal.user@ethereal.email')) {
+      const testAccount = await nodemailer.createTestAccount();
+      transporter = nodemailer.createTransport({
+        host: 'smtp.ethereal.email',
+        port: 587,
+        secure: false,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass,
+        },
+      });
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    
+    // In development, log the Ethereal URL to view the email
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Estimator Assignment Email URL: %s', nodemailer.getTestMessageUrl(info));
+    }
+    
+    return info;
+  } catch (error) {
+    console.error('Error sending estimator assignment email:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   sendCustomerIntakeNotification,
   sendInspectionEmail,
@@ -861,5 +1427,9 @@ module.exports = {
   sendCustomerFormEmail,
   sendQuoteEmail,
   sendDecisionEmail,
-  sendSigningCompletionEmail
+  sendCustomerCreationEmail,
+  sendAdminCustomerCreationNotification,
+  sendAdminInspectionCompletedNotification,
+  sendEstimatorInspectionCompletedNotification,
+  sendEstimatorAssignmentEmail
 }; 

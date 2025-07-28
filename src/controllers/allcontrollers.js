@@ -339,6 +339,27 @@ exports.createCase = async (req, res) => {
       .populate('customer')
       .populate('vehicle');
 
+    // Send email notifications
+    try {
+      // Send customer creation confirmation email
+      await emailService.sendCustomerCreationEmail(
+        customer,
+        vehicle,
+        process.env.FRONTEND_URL
+      );
+
+      // Send admin notification
+      await emailService.sendAdminCustomerCreationNotification(
+        customer,
+        vehicle,
+        req.user, // Agent data
+        process.env.FRONTEND_URL
+      );
+    } catch (emailError) {
+      console.error('Error sending customer creation emails:', emailError);
+      // Don't fail the request if email fails
+    }
+
     res.status(201).json({
       success: true,
       data: populatedCase
@@ -519,7 +540,7 @@ exports.scheduleInspection = async (req, res) => {
       inspection,
       caseData.customer,
       caseData.vehicle,
-      process.env.BASE_URL
+      process.env.FRONTEND_URL
     );
 
     res.status(200).json({
@@ -687,17 +708,40 @@ exports.submitInspection = async (req, res) => {
       { new: true }
     ).populate('customer').populate('vehicle');
 
-    // Send email notification about completed inspection
+    // Send email notifications about completed inspection
     if (caseData) {
       try {
+        // Send customer notification (existing)
         await emailService.sendInspectionCompletedEmail(
           inspection,
           caseData.customer,
           caseData.vehicle,
-          process.env.BASE_URL
+          process.env.FRONTEND_URL
         );
+
+        // Send admin notification
+        await emailService.sendAdminInspectionCompletedNotification(
+          inspection,
+          caseData.customer,
+          caseData.vehicle,
+          process.env.FRONTEND_URL
+        );
+
+        // Send estimator notification if an estimator is assigned
+        if (caseData.estimatorId) {
+          const estimator = await User.findById(caseData.estimatorId);
+          if (estimator) {
+            await emailService.sendEstimatorInspectionCompletedNotification(
+              inspection,
+              caseData.customer,
+              caseData.vehicle,
+              estimator,
+              process.env.FRONTEND_URL
+            );
+          }
+        }
       } catch (emailError) {
-        console.error('Error sending inspection completion email:', emailError);
+        console.error('Error sending inspection completion emails:', emailError);
       }
     }
 
@@ -859,16 +903,6 @@ exports.assignEstimator = async (req, res) => {
       .populate('vehicle')
       .populate('customer')
       .populate('inspection');
-
-    // Send email to estimator
-    await emailService.sendEstimatorEmail(
-      populatedQuote,
-      caseData.inspection,
-      caseData.customer,
-      caseData.vehicle,
-      process.env.BASE_URL
-    );
-
     res.status(200).json({
       success: true,
       data: populatedQuote
@@ -944,14 +978,20 @@ exports.assignEstimatorDuringInspection = async (req, res) => {
       .populate('customer')
       .populate('inspection');
 
-    // Send email to estimator
-    await emailService.sendEstimatorEmail(
-      populatedQuote,
-      caseData.inspection,
-      caseData.customer,
-      caseData.vehicle,
-      process.env.BASE_URL
-    );
+    // Send email notifications to estimator
+    try {
+      // Send estimator assignment notification
+      await emailService.sendEstimatorAssignmentEmail(
+        estimatorUser,
+        caseData.customer,
+        caseData.vehicle,
+        caseData,
+        process.env.FRONTEND_URL
+      );
+    } catch (emailError) {
+      console.error('Error sending estimator assignment emails:', emailError);
+      // Don't fail the request if email fails
+    }
 
     res.status(200).json({
       success: true,
@@ -1321,7 +1361,7 @@ exports.completeCase = async (req, res) => {
       caseData.vehicle,
       caseData.transaction,
       `${process.env.NEXT_PUBLIC_API_URL}/uploads/pdfs/${pdfResult.fileName}`,
-      process.env.BASE_URL
+      process.env.FRONTEND_URL
     );
 
     res.status(200).json({
@@ -1471,7 +1511,7 @@ exports.completeCaseWithToken = async (req, res) => {
       caseData.vehicle,
       caseData.transaction,
       `${process.env.NEXT_PUBLIC_API_URL}/uploads/pdfs/${pdfResult.fileName}`,
-      process.env.BASE_URL
+      process.env.FRONTEND_URL
     );
 
     res.status(200).json({
@@ -2049,7 +2089,7 @@ exports.completeCaseByCaseId = async (req, res) => {
       caseData.vehicle,
       caseData.transaction,
       `${process.env.NEXT_PUBLIC_API_URL}/uploads/pdfs/${pdfResult.fileName}`,
-      process.env.BASE_URL
+      process.env.FRONTEND_URL
     );
 
     console.log('Case completed successfully by case ID');
@@ -2540,7 +2580,7 @@ exports.sendCustomerEmail = async (req, res) => {
           caseData.customer,
           caseData.vehicle,
           caseData.quote,
-          process.env.BASE_URL
+          process.env.FRONTEND_URL
         );
         break;
       case 'decision':
@@ -2549,7 +2589,7 @@ exports.sendCustomerEmail = async (req, res) => {
           caseData.customer,
           caseData.vehicle,
           caseData.quote,
-          process.env.BASE_URL
+          process.env.FRONTEND_URL
         );
         break;
       case 'thank-you':
@@ -2559,7 +2599,7 @@ exports.sendCustomerEmail = async (req, res) => {
           caseData.vehicle,
           caseData.transaction,
           caseData.pdfCaseFile ? `${process.env.NEXT_PUBLIC_API_URL}/uploads/pdfs/${path.basename(caseData.pdfCaseFile)}` : null,
-          process.env.BASE_URL
+          process.env.FRONTEND_URL
         );
         break;
     }
@@ -3247,16 +3287,24 @@ exports.customerIntake = async (req, res) => {
       .populate('customer')
       .populate('vehicle');
 
-    // Send email notification to admin
+    // Send email notifications
     try {
+      // Send customer creation confirmation email
+      await emailService.sendCustomerCreationEmail(
+        customer,
+        vehicle,
+        process.env.FRONTEND_URL
+      );
+
+      // Send admin notification
       await emailService.sendCustomerIntakeNotification(
         customer,
         vehicle,
         populatedCase,
-        process.env.BASE_URL
+        process.env.FRONTEND_URL
       );
     } catch (emailError) {
-      console.error('Error sending customer intake notification email:', emailError);
+      console.error('Error sending customer creation emails:', emailError);
       // Don't fail the request if email fails
     }
 

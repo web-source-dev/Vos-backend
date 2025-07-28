@@ -179,9 +179,6 @@ async function sendEstimatorEmail(quoteData, inspectionData, customerData, vehic
             Start Complete Workflow
           </a>
         </p>
-        
-        <p style="color: #6b7280; font-size: 14px;">Note: This link is unique to you and does not require login. Please do not share this link with others.</p>
-        
         <p>You will be able to complete all remaining steps in the process:</p>
         <ul style="color: #6b7280; font-size: 14px;">
           <li>Quote Preparation</li>
@@ -242,14 +239,6 @@ async function sendCustomerConfirmationEmail(customerData, vehicleData, transact
           <p><strong>Sale Date:</strong> ${billOfSale.saleDate ? new Date(billOfSale.saleDate).toLocaleDateString() : 'Date to be determined'}</p>
           <p><strong>Payment Method:</strong> ${billOfSale.paymentMethod || 'To be determined'}</p>
         </div>
-        
-        <p>Please click the link below to download a copy of your case file:</p>
-        
-        <p style="margin: 20px 0;">
-          <a href="${pdfUrl}" style="background: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
-            Download Case File
-          </a>
-        </p>
         
         <p>We appreciate your business and would love to hear about your experience. Please take a moment to leave us a review.</p>
         
@@ -1005,19 +994,10 @@ async function sendAdminInspectionCompletedNotification(inspectionData, customer
           </div>
         ` : ''}
         
-        ${inspectionData.recommendations && inspectionData.recommendations.length > 0 ? `
-          <div style="background-color: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
-            <h4 style="color: #1e40af; margin-top: 0;">Recommendations</h4>
-            <ul style="color: #1e40af; margin: 10px 0; padding-left: 20px;">
-              ${inspectionData.recommendations.map(rec => `<li>${rec}</li>`).join('')}
-            </ul>
-          </div>
-        ` : ''}
         
         <div style="background-color: #dbeafe; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
           <h3 style="color: #1e40af; margin-top: 0;">Next Steps</h3>
           <p style="margin-bottom: 10px;">The inspection has been completed successfully. The case is now ready for quote preparation.</p>
-          <p style="margin-bottom: 15px;"><strong>Action Required:</strong> Please assign an estimator to prepare the quote.</p>
           
           <a href="${baseUrl}/admin/customers" 
              style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
@@ -1102,15 +1082,6 @@ async function sendEstimatorInspectionCompletedNotification(inspectionData, cust
           </div>
         ` : ''}
         
-        ${inspectionData.recommendations && inspectionData.recommendations.length > 0 ? `
-          <div style="background-color: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
-            <h4 style="color: #1e40af; margin-top: 0;">Recommendations</h4>
-            <ul style="color: #1e40af; margin: 10px 0; padding-left: 20px;">
-              ${inspectionData.recommendations.map(rec => `<li>${rec}</li>`).join('')}
-            </ul>
-          </div>
-        ` : ''}
-        
         <div style="background: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
           <h3 style="color: #1e40af; margin-top: 0;">Next Steps</h3>
           <p style="margin-bottom: 10px;">The inspection is complete and ready for quote preparation. Please:</p>
@@ -1124,7 +1095,7 @@ async function sendEstimatorInspectionCompletedNotification(inspectionData, cust
         
         <p style="margin: 20px 0;">
           <a href="${baseUrl}/estimator" style="background: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
-            Access Estimator Dashboard
+            Go to Dashboard
           </a>
         </p>
         

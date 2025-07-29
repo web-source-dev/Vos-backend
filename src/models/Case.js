@@ -87,7 +87,7 @@ const CaseSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['new', 'active', 'scheduled', 'quote-ready', 'negotiating', 'completed', 'cancelled'],
+    enum: ['new', 'active', 'scheduled', 'quote-ready', 'negotiating', 'completed', 'cancelled','quote-declined'],
     default: 'new'
   },
   priority: {

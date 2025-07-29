@@ -1212,6 +1212,84 @@ async function sendEstimatorAssignmentEmail(estimatorData, customerData, vehicle
   }
 };
 
+/**
+ * Send declined offer follow-up email to customer
+ * @param {Object} customerData - The customer data
+ * @param {Object} vehicleData - The vehicle data
+ * @param {Object} quoteData - The quote data
+ * @param {String} baseUrl - The base URL for the application
+ * @returns {Promise} - Promise resolving to the email info
+ */
+async function sendDeclinedOfferFollowupEmail(customerData, vehicleData, quoteData, baseUrl) {
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
+    to: customerData.email1,
+    subject: `VIN On Spot: Thank You for Your Interest - ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #3b82f6;">VIN On Spot: Thank You for Your Interest</h2>
+        <p>Dear ${customerData.firstName} ${customerData.middleInitial || ''} ${customerData.lastName},</p>
+        
+        <p>Thank you for considering VIN On Spot for your ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}. We appreciate the time you took to work with us throughout the inspection and quote process.</p>
+        
+        <div style="padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Your Vehicle Information</h3>
+          <p><strong>Vehicle:</strong> ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}</p>
+          <p><strong>Mileage:</strong> ${vehicleData.currentMileage}</p>
+          ${vehicleData.vin ? `<p><strong>VIN:</strong> ${vehicleData.vin}</p>` : ''}
+          ${vehicleData.color ? `<p><strong>Color:</strong> ${vehicleData.color}</p>` : ''}
+        </div>
+        
+        <div style="padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="margin-top: 0;">Our Commitment to You</h3>
+          <p style="margin-bottom: 10px;">We understand that every situation is unique, and we respect your decision. We want you to know that:</p>
+          <ul style="margin: 10px 0; padding-left: 20px;">
+            <li>Your vehicle inspection report is available for your records</li>
+            <li>We're here if you need any future assistance</li>
+            <li>Our offer remains valid for future consideration</li>
+            <li>We appreciate your business and trust</li>
+          </ul>
+        </div>
+        
+        <div style="padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="margin-top: 0;">What's Next?</h3>
+          <p style="margin-bottom: 10px;">If your circumstances change or if you have any questions about our services, please don't hesitate to reach out:</p>
+          <ul style="margin: 10px 0; padding-left: 20px;">
+            <li>We're always available to provide new quotes</li>
+            <li>Market conditions change regularly - new opportunities may arise</li>
+            <li>We can help with other vehicles you might be considering</li>
+            <li>Our team is here to support your automotive needs</li>
+          </ul>
+        </div>
+        
+        <div style="padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="margin-top: 0;">Stay Connected</h3>
+          <p style="margin-bottom: 10px;">We'd love to stay in touch and keep you informed about:</p>
+          <ul style="margin: 10px 0; padding-left: 20px;">
+            <li>Market updates and pricing trends</li>
+            <li>Special offers and promotions</li>
+            <li>New services and features</li>
+            <li>Industry insights and tips</li>
+          </ul>
+        </div>
+        
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 12px;">
+          <p>Thank you for choosing VIN On Spot. We value your business and look forward to serving you in the future.</p>
+          <p>Best regards,<br>The VIN On Spot Team</p>
+        </div>
+      </div>
+    `
+  };
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    return info;
+  } catch (error) {
+    console.error('Error sending declined offer follow-up email:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   sendCustomerIntakeNotification,
   sendInspectionEmail,
@@ -1227,5 +1305,6 @@ module.exports = {
   sendAdminCustomerCreationNotification,
   sendAdminInspectionCompletedNotification,
   sendEstimatorInspectionCompletedNotification,
-  sendEstimatorAssignmentEmail
+  sendEstimatorAssignmentEmail,
+  sendDeclinedOfferFollowupEmail
 }; 

@@ -330,7 +330,6 @@ exports.createCase = async (req, res) => {
         4: 'pending',
         5: 'pending',
         6: 'pending',
-        7: 'pending'
       }
     });
 
@@ -514,6 +513,7 @@ exports.scheduleInspection = async (req, res) => {
 
     // Create inspection record
     const inspection = await Inspection.create({
+      caseId: caseId,
       vehicle: caseData.vehicle._id,
       customer: caseData.customer._id,
       inspector,
@@ -574,9 +574,12 @@ exports.getInspectionByToken = async (req, res) => {
       });
     }
 
-    // Fetch the related case to get the caseId
-    const caseDoc = await Case.findOne({ inspection: inspection._id });
-    let caseId = caseDoc ? caseDoc._id : null;
+    // Get caseId from inspection if available, otherwise fetch from case
+    let caseId = inspection.caseId;
+    if (!caseId) {
+      const caseDoc = await Case.findOne({ inspection: inspection._id });
+      caseId = caseDoc ? caseDoc._id : null;
+    }
 
     // Inspector info
     let inspectorId = null;
@@ -855,65 +858,6 @@ exports.savePendingInspection = async (req, res) => {
   }
 };
 
-// Assign estimator for quote preparation
-exports.assignEstimator = async (req, res) => {
-  try {
-    const { caseId } = req.params;
-    const { estimator } = req.body;
-
-    const caseData = await Case.findById(caseId)
-      .populate('customer')
-      .populate('vehicle')
-      .populate('inspection');
-
-    if (!caseData) {
-      return res.status(404).json({
-        success: false,
-        error: 'Case not found'
-      });
-    }
-
-    // Find estimator user by email
-    const estimatorUser = await User.findOne({ email: estimator.email });
-
-    // Create quote record
-    const quote = await Quote.create({
-      caseId: caseId,
-      vehicle: caseData.vehicle._id,
-      customer: caseData.customer._id,
-      inspection: caseData.inspection._id,
-      estimator,
-      status: 'draft',
-      createdBy: req.user.id
-    });
-
-    // Update case with quote reference and estimatorId
-    await Case.findByIdAndUpdate(caseId, {
-      quote: quote._id,
-      estimatorId: estimatorUser ? estimatorUser._id : null,
-      currentStage: 4,
-      'stageStatuses.3': 'complete',
-      'stageStatuses.4': 'active',
-      status: 'quote-ready'
-    });
-
-    // Populate the quote with related data for the response
-    const populatedQuote = await Quote.findById(quote._id)
-      .populate('caseId')
-      .populate('vehicle')
-      .populate('customer')
-      .populate('inspection');
-    res.status(200).json({
-      success: true,
-      data: populatedQuote
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-};
 
 // Assign estimator during inspection scheduling
 exports.assignEstimatorDuringInspection = async (req, res) => {
@@ -1111,16 +1055,6 @@ exports.submitQuote = async (req, res) => {
       }
     }
 
-    // Update case status
-    await Case.findOneAndUpdate(
-      { quote: quote._id },
-      {
-        currentStage: 5,
-        'stageStatuses.4': 'complete',
-        'stageStatuses.5': 'active'
-      }
-    );
-
     res.status(200).json({
       success: true,
       data: quote
@@ -1160,16 +1094,10 @@ exports.updateOfferDecision = async (req, res) => {
       });
     }
 
-    // Update case status based on decision
-    let caseUpdate = {
-      'stageStatuses.5': 'complete',
-      'stageStatuses.6': 'active'
-    };
-
     if (offerDecision.decision === 'accepted') {
-      caseUpdate.currentStage = 6;
+      caseUpdate.currentStage = 4;
     } else if (offerDecision.decision === 'declined') {
-      caseUpdate.status = 'closed';
+      caseUpdate.status = 'quote-declined';
     }
 
     await Case.findOneAndUpdate(
@@ -1220,9 +1148,9 @@ exports.updatePaperwork = async (req, res) => {
     await Case.findOneAndUpdate(
       { quote: quote._id },
       {
-        currentStage: 7,
-        'stageStatuses.6': 'complete',
-        'stageStatuses.7': 'active'
+        currentStage: 6,
+        'stageStatuses.5': 'complete',
+        'stageStatuses.6': 'active'
       }
     );
 
@@ -1346,9 +1274,8 @@ exports.completeCase = async (req, res) => {
       caseId,
       {
         pdfCaseFile: pdfResult.filePath,
-        currentStage: 7,
+        currentStage: 6,
         'stageStatuses.6': 'complete',
-        'stageStatuses.7': 'complete',
         status: 'completed',
         thankYouSent: true
       },
@@ -2021,15 +1948,28 @@ exports.updateOfferDecisionByCaseId = async (req, res) => {
 
     console.log('Quote updated successfully');
 
-    // Don't automatically advance stages - let the frontend manage stage progression
-    // The frontend will call updateCaseStageByCaseId separately to manage stage status
-    // Only update case status if decision is declined
+    // Update case status and stage based on decision
     if (offerDecision.decision === 'declined') {
       await Case.findByIdAndUpdate(
         caseId,
-        { status: 'closed' }
+        { 
+          status: 'quote-declined',
+          currentStage: 6, // Move to completion stage
+          'stageStatuses.4': 'complete', // Mark offer decision as complete
+          'stageStatuses.6': 'active' // Mark completion as active
+        }
       );
-      console.log('Case marked as closed due to declined offer');
+      console.log('Case marked as quote-declined and moved to completion stage');
+    } else if (offerDecision.decision === 'accepted') {
+      await Case.findByIdAndUpdate(
+        caseId,
+        { 
+          status: 'negotiating',
+          currentStage: 4, // Move to paperwork stage
+          'stageStatuses.4': 'active', // Mark offer decision as complete
+        }
+      );
+      console.log('Case marked as negotiating and moved to paperwork stage');
     }
 
     console.log('Offer decision updated successfully');
@@ -2068,29 +2008,47 @@ exports.completeCaseByCaseId = async (req, res) => {
       });
     }
 
+    // Check if this is a declined offer case
+    const isDeclinedOffer = caseData.status === 'quote-declined' || 
+                           (caseData.quote && caseData.quote.offerDecision && 
+                            caseData.quote.offerDecision.decision === 'declined');
+
     // Generate case file PDF
     const pdfResult = await pdfService.generateCasePDF(caseData);
 
-    // Update case with PDF path and completion status only - don't automatically advance stages
-    // The frontend will call updateCaseStageByCaseId separately to manage stage status
+    // Update case with PDF path and completion status
+    const updateData = {
+      pdfCaseFile: pdfResult.filePath,
+      thankYouSent: true
+    };
+
+    // Set appropriate status based on whether it's a declined offer
+    if (isDeclinedOffer) {
+      updateData.status = 'cancelled'; // Mark as cancelled for declined offers
+    } else {
+      updateData.status = 'completed'; // Mark as completed for successful transactions
+    }
+
     const updatedCase = await Case.findByIdAndUpdate(
       caseId,
-      {
-        pdfCaseFile: pdfResult.filePath,
-        status: 'completed',
-        thankYouSent: true
-      },
+      updateData,
       { new: true }
     );
 
-    // Send thank you email with PDF
-    await emailService.sendCustomerConfirmationEmail(
-      caseData.customer,
-      caseData.vehicle,
-      caseData.transaction,
-      `${process.env.NEXT_PUBLIC_API_URL}/uploads/pdfs/${pdfResult.fileName}`,
-      process.env.FRONTEND_URL
-    );
+    // Send appropriate email based on case type
+    if (isDeclinedOffer) {
+      // For declined offers, send a different type of email or skip email
+      console.log('Skipping confirmation email for declined offer case');
+    } else {
+      // Send thank you email with PDF for completed transactions
+      await emailService.sendCustomerConfirmationEmail(
+        caseData.customer,
+        caseData.vehicle,
+        caseData.transaction,
+        `${process.env.NEXT_PUBLIC_API_URL}/uploads/pdfs/${pdfResult.fileName}`,
+        process.env.FRONTEND_URL
+      );
+    }
 
     console.log('Case completed successfully by case ID');
 
@@ -2165,28 +2123,6 @@ exports.savePaperworkByCaseId = async (req, res) => {
     // Get vehicle ID (handle both populated and unpopulated cases)
     const vehicleId = caseData.vehicle._id || caseData.vehicle;
     console.log('Vehicle ID:', vehicleId);
-
-    // Process document uploads if any files were uploaded
-    const documents = {};
-    if (paperworkData.documentsUploaded) {
-      documents.idRescan = paperworkData.documentsUploaded.idRescan ? '/uploads/documents/id-rescan.jpg' : null;
-      documents.signedBillOfSale = paperworkData.documentsUploaded.signedBillOfSale ? '/uploads/documents/signed-bill-of-sale.pdf' : null;
-      documents.titlePhoto = paperworkData.documentsUploaded.titlePhoto ? '/uploads/documents/title-photo.jpg' : null;
-      documents.insuranceDeclaration = paperworkData.documentsUploaded.insuranceDeclaration ? '/uploads/documents/insurance-declaration.pdf' : null;
-      documents.sellerSignature = paperworkData.documentsUploaded.sellerSignature ? '/uploads/documents/seller-signature.jpg' : null;
-      documents.additionalDocument = paperworkData.documentsUploaded.additionalDocument ? '/uploads/documents/additional-document.pdf' : null;
-    }
-
-    // If there are actual document paths in the paperwork data, use those
-    if (paperworkData.documents) {
-      Object.keys(paperworkData.documents).forEach(key => {
-        if (paperworkData.documents[key]) {
-          documents[key] = paperworkData.documents[key];
-        }
-      });
-    }
-
-    console.log('Documents processed:', documents);
 
     // Update vehicle information in the vehicle database first
     const vehicleUpdateData = {
@@ -2279,7 +2215,6 @@ exports.savePaperworkByCaseId = async (req, res) => {
           payoffStatus: paperworkData.payoffStatus || 'not_required',
           payoffNotes: paperworkData.payoffNotes || '',
           preferredPaymentMethod: paperworkData.preferredPaymentMethod || 'Wire',
-          documents: documents,
           paymentStatus: paperworkData.status || 'pending',
           submittedAt: paperworkData.submittedAt || new Date(),
           completedAt: paperworkData.status === 'completed' ? new Date() : null
@@ -2337,7 +2272,6 @@ exports.savePaperworkByCaseId = async (req, res) => {
           payoffStatus: paperworkData.payoffStatus || 'not_required',
           payoffNotes: paperworkData.payoffNotes || '',
           preferredPaymentMethod: paperworkData.preferredPaymentMethod || 'Wire',
-          documents: documents,
           paymentStatus: paperworkData.status || 'pending',
           submittedAt: paperworkData.submittedAt || new Date(),
           completedAt: paperworkData.status === 'completed' ? new Date() : null,
@@ -2394,7 +2328,6 @@ exports.savePaperworkByCaseId = async (req, res) => {
           payoffStatus: paperworkData.payoffStatus || 'not_required',
           payoffNotes: paperworkData.payoffNotes || '',
           preferredPaymentMethod: paperworkData.preferredPaymentMethod || 'Wire',
-          documents: documents,
           paymentStatus: paperworkData.status || 'pending',
           submittedAt: paperworkData.submittedAt || new Date(),
           completedAt: paperworkData.status === 'completed' ? new Date() : null,
@@ -2418,7 +2351,6 @@ exports.savePaperworkByCaseId = async (req, res) => {
       caseId,
       {
         transaction: transaction._id,
-        status: 'completed'
       },
       { new: true }
     ).populate('customer')
@@ -2550,10 +2482,10 @@ exports.sendCustomerEmail = async (req, res) => {
     const { caseId } = req.params;
     const { emailType } = req.body;
 
-    if (!emailType || !['quote', 'decision', 'thank-you'].includes(emailType)) {
+    if (!emailType || !['quote', 'decision', 'thank-you', 'declined-followup'].includes(emailType)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid email type. Must be one of: quote, decision, thank-you'
+        error: 'Invalid email type. Must be one of: quote, decision, thank-you, declined-followup'
       });
     }
 
@@ -2599,6 +2531,15 @@ exports.sendCustomerEmail = async (req, res) => {
           caseData.vehicle,
           caseData.transaction,
           caseData.pdfCaseFile ? `${process.env.NEXT_PUBLIC_API_URL}/uploads/pdfs/${path.basename(caseData.pdfCaseFile)}` : null,
+          process.env.FRONTEND_URL
+        );
+        break;
+      case 'declined-followup':
+        // Send declined offer follow-up email
+        emailResult = await emailService.sendDeclinedOfferFollowupEmail(
+          caseData.customer,
+          caseData.vehicle,
+          caseData.quote,
           process.env.FRONTEND_URL
         );
         break;
@@ -2899,8 +2840,8 @@ exports.saveCompletionData = async (req, res) => {
           titleConfirmation: completionData.titleConfirmation || false
         },
         status: 'completed',
-        currentStage: 7,
-        'stageStatuses.7': 'complete'
+        currentStage: 6,
+        'stageStatuses.6': 'complete'
       },
       { new: true }
     ).populate('customer')
@@ -2979,36 +2920,47 @@ exports.getAnalytics = async (req, res) => {
     };
 
     cases.forEach(caseData => {
-      // Calculate revenue
-      const revenue = caseData.quote?.offerDecision?.finalAmount || 
-                     caseData.quote?.offerAmount || 
-                     caseData.transaction?.billOfSale?.salePrice || 0;
+      // Calculate revenue - only for completed cases, exclude declined/closed cases
+      let revenue = 0;
+      if (caseData.status === 'completed') {
+        revenue = caseData.quote?.offerDecision?.finalAmount || 
+                  caseData.quote?.offerAmount || 
+                  caseData.transaction?.billOfSale?.salePrice || 0;
+      }
       analytics.totalRevenue += revenue;
 
-      // Cases by status
-      analytics.casesByStatus[caseData.status] = (analytics.casesByStatus[caseData.status] || 0) + 1;
+      // Cases by status - combine declined offers and closed cases
+      if (caseData.status === "quote-declined" || caseData.status === "cancelled") {
+        analytics.casesByStatus["quote-declined"] = (analytics.casesByStatus["quote-declined"] || 0) + 1;
+      } else {
+        analytics.casesByStatus[caseData.status] = (analytics.casesByStatus[caseData.status] || 0) + 1;
+      }
 
       // Cases by stage
       analytics.casesByStage[`Stage ${caseData.currentStage}`] = (analytics.casesByStage[`Stage ${caseData.currentStage}`] || 0) + 1;
 
-      // Revenue by month
-      const month = new Date(caseData.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      if (!analytics.revenueByMonth[month]) {
-        analytics.revenueByMonth[month] = { revenue: 0, cases: 0 };
+      // Revenue by month - only for completed cases
+      if (caseData.status === 'completed') {
+        const month = new Date(caseData.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        if (!analytics.revenueByMonth[month]) {
+          analytics.revenueByMonth[month] = { revenue: 0, cases: 0 };
+        }
+        analytics.revenueByMonth[month].revenue += revenue;
+        analytics.revenueByMonth[month].cases += 1;
       }
-      analytics.revenueByMonth[month].revenue += revenue;
-      analytics.revenueByMonth[month].cases += 1;
 
-      // Cases by day
-      const day = new Date(caseData.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      if (!analytics.casesByDay[day]) {
-        analytics.casesByDay[day] = { cases: 0, revenue: 0 };
+      // Cases by day - only for completed cases
+      if (caseData.status === 'completed') {
+        const day = new Date(caseData.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        if (!analytics.casesByDay[day]) {
+          analytics.casesByDay[day] = { cases: 0, revenue: 0 };
+        }
+        analytics.casesByDay[day].cases += 1;
+        analytics.casesByDay[day].revenue += revenue;
       }
-      analytics.casesByDay[day].cases += 1;
-      analytics.casesByDay[day].revenue += revenue;
 
-      // Top vehicles
-      if (caseData.vehicle?.make && caseData.vehicle?.model) {
+      // Top vehicles - only for completed cases
+      if (caseData.status === 'completed' && caseData.vehicle?.make && caseData.vehicle?.model) {
         const vehicleKey = `${caseData.vehicle.make} ${caseData.vehicle.model}`;
         if (!analytics.topVehicles[vehicleKey]) {
           analytics.topVehicles[vehicleKey] = { count: 0, totalValue: 0 };
@@ -3017,8 +2969,8 @@ exports.getAnalytics = async (req, res) => {
         analytics.topVehicles[vehicleKey].totalValue += revenue;
       }
 
-      // Agent performance
-      if (caseData.createdBy) {
+      // Agent performance - only for completed cases
+      if (caseData.status === 'completed' && caseData.createdBy) {
         const agentId = caseData.createdBy._id || caseData.createdBy;
         const agentName = caseData.createdBy.firstName && caseData.createdBy.lastName 
           ? `${caseData.createdBy.firstName} ${caseData.createdBy.lastName}`
@@ -3040,8 +2992,11 @@ exports.getAnalytics = async (req, res) => {
         }
       }
 
-      // Decision breakdown
-      const decision = caseData.quote?.offerDecision?.decision || 'pending';
+      // Decision breakdown - handle declined offers properly
+      let decision = caseData.quote?.offerDecision?.decision || 'pending';
+      if (caseData.status === "quote-declined" || caseData.status === "cancelled") {
+        decision = 'declined';
+      }
       analytics.decisionBreakdown[decision] = (analytics.decisionBreakdown[decision] || 0) + 1;
 
       // Stage progression
@@ -3052,9 +3007,12 @@ exports.getAnalytics = async (req, res) => {
     });
 
     // Calculate averages and percentages
-    analytics.avgCaseValue = analytics.totalCases > 0 ? analytics.totalRevenue / analytics.totalCases : 0;
-    analytics.completionRate = analytics.totalCases > 0 ? 
-      (analytics.casesByStatus.completed || 0) / analytics.totalCases * 100 : 0;
+    const completedCasesCount = analytics.casesByStatus.completed || 0;
+    analytics.avgCaseValue = completedCasesCount > 0 ? analytics.totalRevenue / completedCasesCount : 0;
+    // Calculate completion rate excluding declined/closed cases
+    const totalActiveCases = analytics.totalCases - (analytics.casesByStatus["quote-declined"] || 0);
+    analytics.completionRate = totalActiveCases > 0 ? 
+      (analytics.casesByStatus.completed || 0) / totalActiveCases * 100 : 0;
 
     // Calculate average inspection rating
     const allRatings = cases
@@ -3108,11 +3066,23 @@ exports.getAnalytics = async (req, res) => {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10);
 
-    analytics.decisionBreakdown = Object.entries(analytics.decisionBreakdown).map(([decision, count]) => ({
-      decision: decision.charAt(0).toUpperCase() + decision.slice(1),
-      count,
-      percentage: (count / analytics.totalCases) * 100
-    }));
+    analytics.decisionBreakdown = Object.entries(analytics.decisionBreakdown).map(([decision, count]) => {
+      let displayName = decision.charAt(0).toUpperCase() + decision.slice(1);
+      if (decision === 'declined') {
+        displayName = 'Offer Declined / Closed';
+      } else if (decision === 'accepted') {
+        displayName = 'Offer Accepted';
+      } else if (decision === 'negotiating') {
+        displayName = 'Under Negotiation';
+      } else if (decision === 'pending') {
+        displayName = 'Pending Decision';
+      }
+      return {
+        decision: displayName,
+        count,
+        percentage: (count / analytics.totalCases) * 100
+      };
+    });
 
     res.status(200).json({
       success: true,
@@ -3263,7 +3233,7 @@ exports.customerIntake = async (req, res) => {
     const newCase = await Case.create({
       customer: customer._id,
       vehicle: vehicle._id,
-      currentStage: 1,
+      currentStage: 2,
       status: 'new',
       createdBy: null, // No user assigned yet
       documents: {
@@ -3273,12 +3243,11 @@ exports.customerIntake = async (req, res) => {
       },
       stageStatuses: {
         1: 'complete',
-        2: 'pending',
+        2: 'active',
         3: 'pending',
         4: 'pending',
         5: 'pending',
         6: 'pending',
-        7: 'pending'
       }
     });
 

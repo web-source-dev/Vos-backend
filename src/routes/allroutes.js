@@ -10,7 +10,6 @@ const {
   getInspectionByToken,
   submitInspection,
   savePendingInspection,
-  assignEstimator,
   assignEstimatorDuringInspection,
   getQuoteByToken,
   submitQuote,
@@ -101,7 +100,6 @@ router.put('/inspection/:token/pending', savePendingInspection);
 router.get('/inspections/assigned', protect, isInspector, getInspectorInspections);
 
 // Quote routes (protected)
-router.post('/cases/:caseId/estimator', protect, assignEstimator);
 router.post('/cases/:caseId/estimator-during-inspection', protect, assignEstimatorDuringInspection);
 router.get('/quote/:token', getQuoteByToken);
 router.post('/quote/:token', submitQuote);
@@ -152,7 +150,7 @@ router.get('/vehicle/makes-models', getVehicleMakesAndModels);
 router.post('/vehicle/custom', protect, saveCustomVehicle);
 
 // Analytics
-router.get('/analytics', protect, isAdmin, getAnalytics);
+router.get('/analytics', protect, getAnalytics);
 
 // Time tracking endpoints
 router.get('/cases/:caseId/time-tracking', protect, getTimeTrackingByCaseId);

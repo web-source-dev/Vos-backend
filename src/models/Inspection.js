@@ -99,6 +99,11 @@ const InspectionSectionSchema = new mongoose.Schema({
 });
 
 const InspectionSchema = new mongoose.Schema({
+  caseId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Case',
+    required: true
+  },
   vehicle: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Vehicle',

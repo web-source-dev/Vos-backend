@@ -1055,6 +1055,23 @@ exports.submitQuote = async (req, res) => {
       }
     }
 
+    // Send quote email to customer automatically
+    try {
+      const emailResult = await emailService.sendQuoteEmail(
+        quote.customer,
+        quote.vehicle,
+        quote,
+        process.env.FRONTEND_URL
+      );
+      console.log('Quote email sent successfully:', emailResult.message);
+      
+      // Update quote to mark email as sent
+      await Quote.findByIdAndUpdate(quote._id, { emailSent: true });
+    } catch (emailError) {
+      console.error('Error sending quote email:', emailError);
+      // Don't fail the quote submission if email fails
+    }
+
     res.status(200).json({
       success: true,
       data: quote
@@ -1877,6 +1894,23 @@ exports.updateQuoteByCaseId = async (req, res) => {
           { transaction: transaction._id }
         );
       }
+    }
+
+    // Send quote email to customer automatically
+    try {
+      const emailResult = await emailService.sendQuoteEmail(
+        quote.customer,
+        quote.vehicle,
+        quote,
+        process.env.FRONTEND_URL
+      );
+      console.log('Quote email sent successfully:', emailResult.message);
+      
+      // Update quote to mark email as sent
+      await Quote.findByIdAndUpdate(quote._id, { emailSent: true });
+    } catch (emailError) {
+      console.error('Error sending quote email:', emailError);
+      // Don't fail the quote submission if email fails
     }
 
     res.status(200).json({

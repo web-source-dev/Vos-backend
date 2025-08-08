@@ -9,7 +9,7 @@ cloudinary.config({
 
 // Helper function to upload image to Cloudinary
 const uploadToCloudinary = async (buffer, options = {}) => {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, reject) => { 
     const uploadOptions = {
       resource_type: 'image',
       folder: 'vos-ownership-verification',

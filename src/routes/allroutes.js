@@ -53,13 +53,20 @@ const {
   getUserAnalytics,
   confirmPayoff,
   deleteCase,
+  uploadInspectionPhoto,
+  deleteInspectionPhoto,
+  checkUserExists,
 } = require('../controllers/allcontrollers');
 
 // Import OBD2 controllers
 const { uploadOBD2ScanToCase } = require('../controllers/obd2');
 
+// Import customer routes
+const customerRoutes = require('./customer');
+
 // Auth routes
 router.get('/auth/me', protect, getCurrentUser);
+router.post('/auth/check-user', checkUserExists);
 
 // User management routes
 router.get('/users', protect, isUserManager, getUsersByRole);
@@ -89,6 +96,9 @@ router.post('/cases/:caseId/obd2-scan', protect, uploadOBD2ScanToCase);
 // Customer intake route (public - no authentication required)
 router.post('/customer-intake', customerIntake);
 
+// Customer vehicle submission routes
+router.use('/customer', customerRoutes);
+
 // Send customer form email (protected - requires authentication)
 router.post('/send-customer-form', sendCustomerFormEmail);
 
@@ -98,6 +108,10 @@ router.get('/inspection/:token', getInspectionByToken);
 router.post('/inspection/:token', submitInspection);
 router.put('/inspection/:token/pending', savePendingInspection);
 router.get('/inspections/assigned', protect, isInspector, getInspectorInspections);
+
+// Inspection photo upload routes (public - token-based authentication)
+router.post('/inspection/upload-photo', uploadInspectionPhoto);
+router.delete('/inspection/delete-photo', deleteInspectionPhoto);
 
 // Quote routes (protected)
 router.post('/cases/:caseId/estimator-during-inspection', protect, assignEstimatorDuringInspection);

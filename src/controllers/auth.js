@@ -7,16 +7,16 @@ exports.register = async (req, res, next) => {
   try {
     const { email, password, firstName, lastName, role, location } = req.body;
 
-    // For public registration, only allow certain roles
+    // For public registration, allow customer and certain roles
     // If req.user exists (admin creating user), allow all roles
     // If no req.user (public registration), restrict to basic roles
-    const validRoles = ['admin', 'agent', 'estimator', 'inspector'];
-    const allowedPublicRoles = ['agent', 'estimator', 'inspector']; // No admin creation via public registration
+    const validRoles = ['admin', 'agent', 'estimator', 'inspector', 'customer'];
+    const allowedPublicRoles = ['agent', 'estimator', 'inspector', 'customer']; // No admin creation via public registration
     
     if (role && !validRoles.includes(role)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid role. Must be one of: admin, agent, estimator, inspector'
+        error: 'Invalid role. Must be one of: admin, agent, estimator, inspector, customer'
       });
     }
 
@@ -29,7 +29,9 @@ exports.register = async (req, res, next) => {
     }
 
     // If this is an admin creating a user, allow all roles
-    if (req.user && req.user.role !== 'admin') {
+    // If this is a customer registration, allow it
+    // Otherwise, restrict to admin only
+    if (req.user && req.user.role !== 'admin' && role !== 'customer') {
       return res.status(403).json({
         success: false,
         error: 'Only admin can register new users'
@@ -51,7 +53,7 @@ exports.register = async (req, res, next) => {
       password,
       firstName,
       lastName,
-      role: role || 'agent',
+      role: role || 'customer',
       location
     });
 

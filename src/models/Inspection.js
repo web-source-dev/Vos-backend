@@ -29,6 +29,8 @@ const InspectionQuestionSchema = new mongoose.Schema({
   photos: [{
     path: String,
     originalName: String,
+    cloudinaryUrl: String,
+    publicId: String,
     uploadedAt: {
       type: Date,
       default: Date.now
@@ -51,6 +53,8 @@ const InspectionQuestionSchema = new mongoose.Schema({
     photos: [{
       path: String,
       originalName: String,
+      cloudinaryUrl: String,
+      publicId: String,
       uploadedAt: {
         type: Date,
         default: Date.now
@@ -79,6 +83,8 @@ const InspectionSectionSchema = new mongoose.Schema({
   photos: [{
     path: String,
     originalName: String,
+    cloudinaryUrl: String,
+    publicId: String,
     uploadedAt: {
       type: Date,
       default: Date.now

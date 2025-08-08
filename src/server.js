@@ -49,17 +49,25 @@ app.use(cors(corsOptions));
 // Middleware
 app.use(express.json());
 
-// File Upload Middleware
-app.use(fileUpload({
-  createParentPath: true,
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB max file size
-  },
-  abortOnLimit: true,
-  useTempFiles: true,
-  tempFileDir: '/tmp/',
-  debug: process.env.NODE_ENV === 'development'
-}));
+// File Upload Middleware - Exclude customer photo upload routes
+app.use((req, res, next) => {
+  // Skip express-fileupload for customer photo uploads (they use multer)
+  if (req.path === '/api/customer/upload-ownership-photo') {
+    return next();
+  }
+  
+  // Use express-fileupload for other routes
+  fileUpload({
+    createParentPath: true,
+    limits: {
+      fileSize: 10 * 1024 * 1024 // 10MB max file size
+    },
+    abortOnLimit: true,
+    useTempFiles: true,
+    tempFileDir: '/tmp/',
+    debug: process.env.NODE_ENV === 'development'
+  })(req, res, next);
+});
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, '../uploads');

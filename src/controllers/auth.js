@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const bcrypt = require('bcryptjs');
 
 // @desc    Register user
 // @route   POST /api/auth/register
@@ -160,3 +161,74 @@ const sendTokenResponse = (user, statusCode, res) => {
     user: userData
   });
 }; 
+
+// @desc    Update current user profile
+// @route   PUT /api/auth/profile
+// @access  Private
+exports.updateProfile = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { firstName, lastName, email, location } = req.body;
+
+    const update = {};
+    if (firstName !== undefined) update.firstName = firstName;
+    if (lastName !== undefined) update.lastName = lastName;
+    if (email !== undefined) update.email = email;
+    if (location !== undefined) update.location = location;
+
+    const updated = await User.findByIdAndUpdate(userId, { $set: update }, { new: true });
+
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: updated._id,
+        email: updated.email,
+        firstName: updated.firstName,
+        lastName: updated.lastName,
+        role: updated.role,
+        location: updated.location,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    next(error);
+  }
+};
+
+// @desc    Change current user password
+// @route   PUT /api/auth/password
+// @access  Private
+exports.changePassword = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.id).select('+password');
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, error: 'Current and new password are required' });
+    }
+
+    const isMatch = await user.matchPassword(currentPassword);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, error: 'Current password is incorrect' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, error: 'New password must be at least 6 characters' });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error(error);
+    next(error);
+  }
+};

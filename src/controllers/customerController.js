@@ -3,6 +3,7 @@ const axios = require('axios');
 const { getVehicleSpecs, getVehiclePricing } = require('./allcontrollers');
 const { uploadToCloudinary } = require('../config/cloudinary');
 const multer = require('multer');
+const createCaseFromSubmission = require('../services/createCaseFromSubmission');
 
 // Helper function to get vehicle data from VIN using the existing getVehicleSpecs and getVehiclePricing
 const getVehicleDataFromVIN = async (vin) => {
@@ -762,10 +763,34 @@ exports.updateAppointment = async (req, res) => {
       notes: submission.appointment?.notes
     });
 
-    res.json({
-      success: true,
-      data: submission
-    });
+    // Create case from submission after appointment is scheduled
+    try {
+      console.log('Creating case from submission:', id);
+      const caseResult = await createCaseFromSubmission(id);
+      console.log('Case created successfully:', {
+        caseId: caseResult.case._id,
+        customerId: caseResult.customer._id,
+        vehicleId: caseResult.vehicle._id
+      });
+
+      res.json({
+        success: true,
+        data: submission,
+        case: {
+          id: caseResult.case._id,
+          customerId: caseResult.customer._id,
+          vehicleId: caseResult.vehicle._id
+        }
+      });
+    } catch (caseError) {
+      console.error('Error creating case from submission:', caseError);
+      // Still return success for appointment update, but include case error
+      res.json({
+        success: true,
+        data: submission,
+        caseError: caseError.message
+      });
+    }
 
   } catch (error) {
     console.error('Error updating appointment:', error);

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect, isAdmin, isAgent, isEstimator, isInspector, isAdminOrAgent, isEstimatorDebug, isQuoteManager, isUserManager } = require('../middleware/auth');
+const { protect, isAdmin, isEstimator, isInspector, isQuoteManager, isUserManager } = require('../middleware/auth');
 const updateStageTime = require('../services/updateStageTime');
 const {
   createCase,
@@ -53,8 +53,6 @@ const {
   getUserAnalytics,
   confirmPayoff,
   deleteCase,
-  uploadInspectionPhoto,
-  deleteInspectionPhoto,
   checkUserExists,
 } = require('../controllers/allcontrollers');
 
@@ -108,10 +106,6 @@ router.get('/inspection/:token', getInspectionByToken);
 router.post('/inspection/:token', submitInspection);
 router.put('/inspection/:token/pending', savePendingInspection);
 router.get('/inspections/assigned', protect, isInspector, getInspectorInspections);
-
-// Inspection photo upload routes (public - token-based authentication)
-router.post('/inspection/upload-photo', uploadInspectionPhoto);
-router.delete('/inspection/delete-photo', deleteInspectionPhoto);
 
 // Quote routes (protected)
 router.post('/cases/:caseId/estimator-during-inspection', protect, assignEstimatorDuringInspection);

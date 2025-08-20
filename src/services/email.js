@@ -1,18 +1,13 @@
-const nodemailer = require('nodemailer');
+const Brevo = require('@getbrevo/brevo');
 const User = require('../models/User');
 
-// Email transport configuration
-let transporter;
-  // Production configuration (using SMTP)
-  transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT,
-    secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASSWORD,
-    },
-  });
+// Brevo API configuration
+const defaultClient = Brevo.ApiClient.instance;
+const apiKey = defaultClient.authentications['api-key'];
+apiKey.apiKey = process.env.BREVO_API_KEY;
+
+// Initialize Brevo API
+const apiInstance = new Brevo.TransactionalEmailsApi();
 
 /**
  * Get all admin users from the database
@@ -45,13 +40,18 @@ async function sendEmailToMultipleRecipients(mailOptions, recipients) {
       return null;
     }
 
-    const multiRecipientMailOptions = {
-      ...mailOptions,
-      to: emailAddresses.join(', ')
+    // Create Brevo email data
+    const sendSmtpEmail = new Brevo.SendSmtpEmail();
+    sendSmtpEmail.to = emailAddresses.map(email => ({ email }));
+    sendSmtpEmail.subject = mailOptions.subject;
+    sendSmtpEmail.htmlContent = mailOptions.html;
+    sendSmtpEmail.textContent = mailOptions.text;
+    sendSmtpEmail.sender = { 
+      name: 'VIN On Spot', 
+      email: process.env.EMAIL_FROM || 'no-reply@vossystem.com' 
     };
 
-    const info = await transporter.sendMail(multiRecipientMailOptions);
-
+    const info = await apiInstance.sendTransacEmail(sendSmtpEmail);
     
     return info;
   } catch (error) {
@@ -132,8 +132,7 @@ async function sendInspectionEmail(inspectionData, customerData, vehicleData, ba
   };
 
   try {
- 
-    const info = await transporter.sendMail(mailOptions);
+    const info = await sendEmail(mailOptions);
     
     return info;
   } catch (error) {
@@ -194,11 +193,8 @@ async function sendEstimatorEmail(quoteData, inspectionData, customerData, vehic
   };
 
   try {
+    const info = await sendEmail(mailOptions);
     
-
-    const info = await transporter.sendMail(mailOptions);
-    
- 
     return info;
   } catch (error) {
     console.error('Error sending estimator email:', error);
@@ -262,11 +258,8 @@ async function sendCustomerConfirmationEmail(customerData, vehicleData, transact
   };
 
   try {
- 
-
-    const info = await transporter.sendMail(mailOptions);
+    const info = await sendEmail(mailOptions);
     
-  
     return info;
   } catch (error) {
     console.error('Error sending customer confirmation email:', error);
@@ -401,11 +394,8 @@ async function sendInspectionCompletedEmail(inspectionData, customerData, vehicl
   };
 
   try {
-
-
-    const info = await transporter.sendMail(mailOptions);
+    const info = await sendEmail(mailOptions);
     
-  
     return info;
   } catch (error) {
     console.error('Error sending inspection completion email:', error);
@@ -414,17 +404,24 @@ async function sendInspectionCompletedEmail(inspectionData, customerData, vehicl
 };
 
 /**
- * Helper function to handle email sending with 
+ * Helper function to handle email sending with Brevo
  * @param {Object} mailOptions - The email options
  * @returns {Promise} - Promise resolving to the email info
  */
 async function sendEmail(mailOptions) {
   try {
-    
+    // Create Brevo email data
+    const sendSmtpEmail = new Brevo.SendSmtpEmail();
+    sendSmtpEmail.to = [{ email: mailOptions.to }];
+    sendSmtpEmail.subject = mailOptions.subject;
+    sendSmtpEmail.htmlContent = mailOptions.html;
+    sendSmtpEmail.textContent = mailOptions.text;
+    sendSmtpEmail.sender = { 
+      name: 'VIN On Spot', 
+      email: process.env.EMAIL_FROM || 'no-reply@vossystem.com' 
+    };
 
-    const info = await transporter.sendMail(mailOptions);
-    
-  
+    const info = await apiInstance.sendTransacEmail(sendSmtpEmail);
     
     return info;
   } catch (error) {
@@ -483,7 +480,7 @@ async function sendQuoteEmail(customer, vehicle, quote, baseUrl) {
       `
     };
 
-    const info = await transporter.sendMail(mailOptions);
+    const info = await sendEmail(mailOptions);
 
     return {
       success: true,
@@ -769,8 +766,7 @@ const sendCustomerFormEmail = async (customerEmail, customerName, formUrl) => {
   };
 
   try {
-
-    const info = await transporter.sendMail(mailOptions);
+    const info = await sendEmail(mailOptions);
     
     return info;
   } catch (error) {
@@ -838,11 +834,8 @@ async function sendCustomerCreationEmail(customerData, vehicleData, baseUrl) {
 
 
   try {
+    const info = await sendEmail(mailOptions);
     
-
-    const info = await transporter.sendMail(mailOptions);
-    
-  
     return info;
   } catch (error) {
     console.error('Error sending customer creation email:', error);
@@ -1107,7 +1100,7 @@ async function sendEstimatorInspectionCompletedNotification(inspectionData, cust
 
   try {
  
-    const info = await transporter.sendMail(mailOptions);
+    const info = await sendEmail(mailOptions);
 
     return info;
   } catch (error) {
@@ -1204,7 +1197,7 @@ async function sendEstimatorAssignmentEmail(estimatorData, customerData, vehicle
   };
 
   try {
-    const info = await transporter.sendMail(mailOptions);
+    const info = await sendEmail(mailOptions);
     return info;
   } catch (error) {
     console.error('Error sending estimator assignment email:', error);
@@ -1282,13 +1275,128 @@ async function sendDeclinedOfferFollowupEmail(customerData, vehicleData, quoteDa
   };
 
   try {
-    const info = await transporter.sendMail(mailOptions);
+    const info = await sendEmail(mailOptions);
     return info;
   } catch (error) {
     console.error('Error sending declined offer follow-up email:', error);
     throw error;
   }
 }
+
+/**
+ * Send password reset email
+ * @param {String} userEmail - User's email address
+ * @param {String} userName - User's first name
+ * @param {String} resetUrl - URL to reset password
+ * @returns {Promise} - Promise resolving to the email info
+ */
+const sendPasswordResetEmail = async (userEmail, userName, resetUrl) => {
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
+    to: userEmail,
+    subject: 'VIN On Spot: Password Reset Request',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #3b82f6;">VIN On Spot: Password Reset Request</h2>
+        <p>Hello ${userName},</p>
+        <p>We received a request to reset your password for your VIN On Spot account.</p>
+        
+        <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Reset Your Password</h3>
+          <p style="margin-bottom: 15px;">Click the button below to create a new password:</p>
+          
+          <a href="${resetUrl}" style="background: #3b82f6; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; font-size: 16px;">
+            Reset Password
+          </a>
+        </div>
+        
+        <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+          <h4 style="color: #92400e; margin-top: 0;">Important Information</h4>
+          <ul style="color: #92400e; margin: 10px 0; padding-left: 20px;">
+            <li>This link will expire in 1 hour for security reasons</li>
+            <li>If you didn't request this password reset, please ignore this email</li>
+            <li>Your password will remain unchanged until you click the link above</li>
+          </ul>
+        </div>
+        
+        <div style="background: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+          <p style="margin: 0; color: #1e40af; font-size: 14px;">
+            <strong>Need help?</strong> If you have any questions or need assistance, please don't hesitate to contact us at (555) 123-4567 or reply to this email.
+          </p>
+        </div>
+        
+        <p>Thank you for using VIN On Spot!</p>
+        <p>Best regards,<br>The VOS Team</p>
+        
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 12px;">
+          <p>If the button above doesn't work, you can copy and paste this link into your browser:</p>
+          <p style="word-break: break-all;">${resetUrl}</p>
+        </div>
+      </div>
+    `
+  };
+
+  try {
+    const info = await sendEmail(mailOptions);
+    return info;
+  } catch (error) {
+    console.error('Error sending password reset email:', error);
+    throw error;
+  }
+};
+
+/**
+ * Send password reset confirmation email
+ * @param {String} userEmail - User's email address
+ * @param {String} userName - User's first name
+ * @returns {Promise} - Promise resolving to the email info
+ */
+const sendPasswordResetConfirmationEmail = async (userEmail, userName) => {
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
+    to: userEmail,
+    subject: 'VIN On Spot: Password Reset Confirmation',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #3b82f6;">VIN On Spot: Password Reset Confirmation</h2>
+        <p>Hello ${userName},</p>
+        <p>Your password has been successfully reset for your VIN On Spot account.</p>
+        
+        <div style="background: #f0fdf4; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #22c55e;">
+          <h3 style="color: #166534; margin-top: 0;">Password Reset Complete</h3>
+          <p style="color: #166534; margin-bottom: 10px;">Your password has been updated successfully. You can now log in to your account using your new password.</p>
+        </div>
+        
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Security Reminder</h3>
+          <ul style="color: #4b5563; margin: 10px 0; padding-left: 20px;">
+            <li>Keep your password secure and don't share it with anyone</li>
+            <li>Use a strong password with a mix of letters, numbers, and symbols</li>
+            <li>Consider enabling two-factor authentication if available</li>
+            <li>Log out of your account when using shared devices</li>
+          </ul>
+        </div>
+        
+        <div style="background: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+          <p style="margin: 0; color: #1e40af; font-size: 14px;">
+            <strong>Didn't reset your password?</strong> If you didn't request this password reset, please contact us immediately at (555) 123-4567 or reply to this email.
+          </p>
+        </div>
+        
+        <p>Thank you for using VIN On Spot!</p>
+        <p>Best regards,<br>The VOS Team</p>
+      </div>
+    `
+  };
+
+  try {
+    const info = await sendEmail(mailOptions);
+    return info;
+  } catch (error) {
+    console.error('Error sending password reset confirmation email:', error);
+    throw error;
+  }
+};
 
 module.exports = {
   sendCustomerIntakeNotification,
@@ -1306,5 +1414,7 @@ module.exports = {
   sendAdminInspectionCompletedNotification,
   sendEstimatorInspectionCompletedNotification,
   sendEstimatorAssignmentEmail,
-  sendDeclinedOfferFollowupEmail
+  sendDeclinedOfferFollowupEmail,
+  sendPasswordResetEmail,
+  sendPasswordResetConfirmationEmail
 }; 

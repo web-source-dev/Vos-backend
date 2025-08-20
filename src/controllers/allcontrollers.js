@@ -4010,7 +4010,7 @@ exports.getVehiclePricing = async (req, res) => {
       // If we have cached data, return it even if it's old
       if (vehicle && vehicle.estimatedValue) {
         return res.status(200).json({
-          success: true,
+          success: true, 
           data: {
             estimatedValue: vehicle.estimatedValue,
             source: vehicle.pricingSource || 'Cached Data (API Unavailable)',

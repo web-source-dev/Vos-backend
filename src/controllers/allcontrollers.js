@@ -2595,245 +2595,6 @@ exports.sendCustomerEmail = async (req, res) => {
   }
 };
 
-// Get vehicle pricing from VIN using MarketCheck API
-exports.getVehiclePricing = async (req, res) => {
-  try {
-    const { vin } = req.params;
-
-    if (!vin) {
-      return res.status(400).json({
-        success: false,
-        error: 'VIN is required'
-      });
-    }
-
-    // Check if we have cached pricing data first
-    const vehicle = await Vehicle.findOne({ vin: vin });
-    if (vehicle && vehicle.estimatedValue && vehicle.pricingLastUpdated) {
-      const lastUpdated = new Date(vehicle.pricingLastUpdated);
-      const now = new Date();
-      const hoursSinceUpdate = (now - lastUpdated) / (1000 * 60 * 60);
-      
-      // If pricing data is less than 24 hours old, return cached data
-      if (hoursSinceUpdate < 24) {
-        return res.status(200).json({
-          success: true,
-          data: {
-            estimatedValue: vehicle.estimatedValue,
-            source: vehicle.pricingSource || 'Cached Data',
-            lastUpdated: vehicle.pricingLastUpdated.toISOString()
-          }
-        });
-      }
-    }
-
-    try {
-      // Fetch vehicle pricing from MarketCheck API
-      const pricingData = await fetchMarketCheckPricing(vin);
-
-      // Validate the pricing data before saving
-      if (!pricingData || !pricingData.estimatedValue || isNaN(pricingData.estimatedValue) || pricingData.estimatedValue <= 0) {
-        console.error('Invalid pricing data received from MarketCheck:', pricingData);
-        throw new Error('Failed to get valid pricing data from MarketCheck API for this VIN');
-      }
-
-      // Store the pricing data in the vehicle record
-      if (vehicle) {
-        vehicle.estimatedValue = pricingData.estimatedValue;
-        vehicle.pricingSource = pricingData.source;
-        vehicle.pricingLastUpdated = new Date();
-        await vehicle.save();
-      }
-
-      res.status(200).json({
-        success: true,
-        data: {
-          estimatedValue: pricingData.estimatedValue,
-          source: pricingData.source,
-          lastUpdated: new Date().toISOString()
-        }
-      });
-    } catch (apiError) {
-      console.error('MarketCheck API error:', apiError.message);
-      
-      // If we have cached data, return it even if it's old
-      if (vehicle && vehicle.estimatedValue) {
-        return res.status(200).json({
-          success: true,
-          data: {
-            estimatedValue: vehicle.estimatedValue,
-            source: vehicle.pricingSource || 'Cached Data (API Unavailable)',
-            lastUpdated: vehicle.pricingLastUpdated?.toISOString() || new Date().toISOString(),
-            warning: 'Using cached data due to API rate limit'
-          }
-        });
-      }
-      
-      // If no cached data, return a more helpful error
-      res.status(503).json({
-        success: false,
-        error: 'Vehicle pricing service is temporarily unavailable. Please try again later or enter a manual estimate.',
-        details: apiError.message
-      });
-    }
-  } catch (error) {
-    console.error('Error in getVehiclePricing:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch vehicle pricing. Please try again later or enter a manual estimate.'
-    });
-  }
-};
-
-// Fetch vehicle pricing from MarketCheck API
-const fetchMarketCheckPricing = async (vin) => {
-  try {
-    console.log(`Fetching vehicle pricing from MarketCheck API for VIN: ${vin}`);
-
-    const marketCheckApiKey = process.env.MARKETCHECK_API_KEY;
-    
-    if (!marketCheckApiKey) {
-      throw new Error('MarketCheck API key not configured. Please set MARKETCHECK_API_KEY environment variable.');
-    }
-
-    // 1. Try MarketCheck's vehicle specs endpoint first
-    const specsUrl = `https://mc-api.marketcheck.com/v2/decode/car/${encodeURIComponent(vin)}/specs?api_key=${marketCheckApiKey}`;
-    try {
-      const response = await axios.get(specsUrl);
-      const data = response.data;
-      console.log('MarketCheck API specs response:', data);
-      
-      // Extract vehicle specs for pricing
-      const {
-        year,
-        make,
-        model,
-        trim,
-        transmission,
-        drivetrain,
-        fuel_type,
-        highway_mpg,
-        city_mpg,
-        engine_size,
-        engine_block,
-        cylinders,
-        doors
-      } = data;
-
-      // 2. Try MarketCheck's price prediction endpoint
-      const transmissionLower = transmission ? transmission.toLowerCase() : '';
-      
-      // Build query parameters, only including valid values
-      const queryParams = new URLSearchParams({
-        api_key: marketCheckApiKey,
-        car_type: "used",
-        year: year || '',
-        make: make || '',
-        model: model || '',
-        trim: trim || '',
-        transmission: transmissionLower === "manual" ? "Manual" : "Automatic",
-        drivetrain: drivetrain?.toLowerCase() === "fwd" ? "FWD" : drivetrain || '',
-        fuel_type: fuel_type || '',
-        latitude: 41.149358, // Default location
-        longitude: -96.145336, // Default location
-        miles: 20000 // Default mileage
-      });
-      
-      // Only add engine parameters if they have valid values
-      if (highway_mpg && !isNaN(parseInt(highway_mpg))) queryParams.append('highway_mpg', highway_mpg);
-      if (city_mpg && !isNaN(parseInt(city_mpg))) queryParams.append('city_mpg', city_mpg);
-      if (doors && !isNaN(parseInt(doors))) queryParams.append('doors', doors);
-      
-      // Extract engine size from engine string (e.g., "2.5L I4" -> "2.5")
-      if (data.engine) {
-        const engineMatch = data.engine.match(/(\d+\.?\d*)L/);
-        if (engineMatch) {
-          queryParams.append('engine_size', engineMatch[1]);
-        }
-      }
-
-      const priceUrl = `https://mc-api.marketcheck.com/v2/predict/car/price?${queryParams.toString()}`;
-      console.log('MarketCheck price prediction URL:', priceUrl);
-      
-      const priceResponse = await axios.get(priceUrl);
-      const priceData = priceResponse.data;
-      console.log('MarketCheck price response:', priceData);
-      
-      if (priceData?.price_range?.lower_bound) {
-        return {
-          estimatedValue: parseFloat(priceData.price_range.lower_bound),
-          source: 'MarketCheck API (Price Prediction)',
-          priceRange: priceData.price_range
-        };
-      }
-    } catch (error) {
-      console.error('MarketCheck specs/price endpoint error:', error.response?.data || error.message);
-    }
-
-    // 3. Try MarketCheck's vehicle history endpoint
-    const historyUrl = `https://mc-api.marketcheck.com/v2/history/car/${encodeURIComponent(vin)}?api_key=${marketCheckApiKey}`;
-    try {
-      const response = await axios.get(historyUrl);
-      const data = response.data;
-      console.log('MarketCheck history response:', data);
-      
-      if (data && Array.isArray(data) && data.length > 0) {
-        // Filter out unrealistic prices (e.g., > $100k for most vehicles)
-        const realisticListings = data.filter(listing => {
-          const price = parseFloat(listing.price);
-          return price && price > 1000 && price < 100000; // Reasonable price range
-        });
-        
-        if (realisticListings.length > 0) {
-          // Get the most recent realistic listing
-          const latestListing = realisticListings[0];
-          return {
-            estimatedValue: parseFloat(latestListing.price),
-            source: 'MarketCheck API (Vehicle History)',
-            listing: latestListing
-          };
-        }
-      }
-    } catch (error) {
-      console.error('MarketCheck history endpoint error:', error.response?.data || error.message);
-    }
-
-    // 4. Try MarketCheck's search endpoint
-    const searchUrl = `https://mc-api.marketcheck.com/v2/search/car/active?api_key=${marketCheckApiKey}&vin=${encodeURIComponent(vin)}`;
-    try {
-      const response = await axios.get(searchUrl);
-      const data = response.data;
-      console.log('MarketCheck search response:', data);
-      
-      if (data && data.listings && data.listings.length > 0) {
-        const prices = data.listings
-          .filter(listing => {
-            const price = parseFloat(listing.price);
-            return price && price > 1000 && price < 100000; // Reasonable price range
-          })
-          .map(listing => parseFloat(listing.price));
-        
-        if (prices.length > 0) {
-          const averagePrice = prices.reduce((sum, price) => sum + price, 0) / prices.length;
-          return {
-            estimatedValue: Math.round(averagePrice),
-            source: 'MarketCheck API (Active Listings)'
-          };
-        }
-      }
-    } catch (error) {
-      console.error('MarketCheck search endpoint error:', error.response?.data || error.message);
-    }
-
-    throw new Error('No pricing data available from MarketCheck API');
-
-  } catch (error) {
-    console.error('Error fetching from MarketCheck API:', error);
-    throw error;
-  }
-};
-
-
 // Save completion data by case ID (for authenticated users)
 exports.saveCompletionData = async (req, res) => {
   try {
@@ -3127,113 +2888,6 @@ exports.getAnalytics = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message
-    });
-  }
-};
-
-// Get vehicle specifications from VIN using MarketCheck API
-exports.getVehicleSpecs = async (req, res) => {
-  try {
-    const { vin } = req.params;
-
-    if (!vin) {
-      return res.status(400).json({
-        success: false,
-        error: 'VIN is required'
-      });
-    }
-
-    // Check if we have cached vehicle data first
-    const vehicle = await Vehicle.findOne({ vin: vin });
-    if (vehicle && vehicle.year && vehicle.make && vehicle.model) {
-      return res.status(200).json({
-        success: true,
-        data: {
-          year: vehicle.year || '',
-          make: vehicle.make || '',
-          model: vehicle.model || '',
-          trim: vehicle.trim || '',
-          body_style: vehicle.bodyStyle || '',
-          engine: vehicle.engine || '',
-          transmission: vehicle.transmission || '',
-          drivetrain: vehicle.drivetrain || '',
-          fuel_type: vehicle.fuelType || '',
-          doors: vehicle.doors || '',
-          exterior_color: vehicle.color || '',
-          interior_color: vehicle.interiorColor || ''
-        },
-        source: 'Cached Data'
-      });
-    }
-
-    const marketCheckApiKey = process.env.MARKETCHECK_API_KEY;
-    
-    if (!marketCheckApiKey) {
-      // If no API key, try to extract basic info from VIN
-      return res.status(200).json({
-        success: true,
-        data: {},
-        source: 'VIN Decode (No API Key)'
-      });
-    }
-
-    // Use the vehicle specs endpoint from MarketCheck
-    const specsUrl = `https://mc-api.marketcheck.com/v2/decode/car/${encodeURIComponent(vin)}/specs?api_key=${marketCheckApiKey}`;
-    
-    try {
-      const response = await axios.get(specsUrl);
-      const data = response.data;
-      console.log('MarketCheck API specs response for getVehicleSpecs:', data);
-      
-      // Extract only the needed vehicle specs for frontend
-      const vehicleSpecs = {
-        year: data.year || '',
-        make: data.make || '',
-        model: data.model || '',
-        trim: data.trim || '',
-        body_style: data.body_style || '',
-        engine: data.engine || '',
-        transmission: data.transmission || '',
-        drivetrain: data.drivetrain || '',
-        fuel_type: data.fuel_type || '',
-        doors: data.doors || '',
-        exterior_color: data.exterior_color || '',
-        interior_color: data.interior_color || ''
-      };
-
-      // Store specs in the vehicle record if it exists
-      if (vehicle) {
-        // Update the vehicle with basic specs
-        if (vehicleSpecs.year) vehicle.year = vehicleSpecs.year;
-        if (vehicleSpecs.make) vehicle.make = vehicleSpecs.make;
-        if (vehicleSpecs.model) vehicle.model = vehicleSpecs.model;
-        if (vehicleSpecs.body_style) vehicle.bodyStyle = vehicleSpecs.body_style;
-        if (vehicleSpecs.exterior_color) vehicle.color = vehicleSpecs.exterior_color;
-        
-        await vehicle.save();
-      }
-
-      return res.status(200).json({
-        success: true,
-        data: vehicleSpecs,
-        source: 'MarketCheck API'
-      });
-    } catch (error) {
-      console.error('MarketCheck specs endpoint error:', error.response?.data || error.message);
-      
-      // If specs endpoint fails, try to get basic info from VIN
-      return res.status(200).json({
-        success: true,
-        data: {},
-        source: 'VIN Decode (API Unavailable)',
-        warning: 'Using basic VIN decode due to API rate limit'
-      });
-    }
-  } catch (error) {
-    console.error('Error in getVehicleSpecs:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch vehicle specifications. Please try again later or enter vehicle details manually.'
     });
   }
 };
@@ -4289,5 +3943,350 @@ const checkUserExists = async (req, res) => {
     });
   }
 };
+
+
+
+// Get vehicle pricing from VIN using MarketCheck API
+exports.getVehiclePricing = async (req, res) => {
+  try {
+    const { vin } = req.params;
+
+    if (!vin) {
+      return res.status(400).json({
+        success: false,
+        error: 'VIN is required'
+      });
+    }
+
+    // Check if we have cached pricing data first
+    const vehicle = await Vehicle.findOne({ vin: vin });
+    if (vehicle && vehicle.estimatedValue && vehicle.pricingLastUpdated) {
+      const lastUpdated = new Date(vehicle.pricingLastUpdated);
+      const now = new Date();
+      const hoursSinceUpdate = (now - lastUpdated) / (1000 * 60 * 60);
+      
+      // If pricing data is less than 24 hours old, return cached data
+      if (hoursSinceUpdate < 24) {
+        return res.status(200).json({
+          success: true,
+          data: {
+            estimatedValue: vehicle.estimatedValue,
+            source: vehicle.pricingSource || 'Cached Data',
+            lastUpdated: vehicle.pricingLastUpdated.toISOString()
+          }
+        });
+      }
+    }
+
+    try {
+      // Fetch vehicle pricing from MarketCheck API
+      const pricingData = await fetchMarketCheckPricing(vin);
+
+      // Validate the pricing data before saving
+      if (!pricingData || !pricingData.estimatedValue || isNaN(pricingData.estimatedValue) || pricingData.estimatedValue <= 0) {
+        console.error('Invalid pricing data received from MarketCheck:', pricingData);
+        throw new Error('Failed to get valid pricing data from MarketCheck API for this VIN');
+      }
+
+      // Store the pricing data in the vehicle record
+      if (vehicle) {
+        vehicle.estimatedValue = pricingData.estimatedValue;
+        vehicle.pricingSource = pricingData.source;
+        vehicle.pricingLastUpdated = new Date();
+        await vehicle.save();
+      }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          estimatedValue: pricingData.estimatedValue,
+          source: pricingData.source,
+          lastUpdated: new Date().toISOString()
+        }
+      });
+    } catch (apiError) {
+      console.error('MarketCheck API error:', apiError.message);
+      
+      // If we have cached data, return it even if it's old
+      if (vehicle && vehicle.estimatedValue) {
+        return res.status(200).json({
+          success: true,
+          data: {
+            estimatedValue: vehicle.estimatedValue,
+            source: vehicle.pricingSource || 'Cached Data (API Unavailable)',
+            lastUpdated: vehicle.pricingLastUpdated?.toISOString() || new Date().toISOString(),
+            warning: 'Using cached data due to API rate limit'
+          }
+        });
+      }
+      
+      // If no cached data, return a more helpful error
+      res.status(503).json({
+        success: false,
+        error: 'Vehicle pricing service is temporarily unavailable. Please try again later or enter a manual estimate.',
+        details: apiError.message
+      });
+    }
+  } catch (error) {
+    console.error('Error in getVehiclePricing:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch vehicle pricing. Please try again later or enter a manual estimate.'
+    });
+  }
+};
+
+// Fetch vehicle pricing from MarketCheck API
+const fetchMarketCheckPricing = async (vin) => {
+  try {
+
+
+    const marketCheckApiKey = process.env.MARKETCHECK_API_KEY;
+    
+    if (!marketCheckApiKey) {
+      throw new Error('MarketCheck API key not configured. Please set MARKETCHECK_API_KEY environment variable.');
+    }
+
+    // 1. Try MarketCheck's vehicle specs endpoint first
+    const specsUrl = `https://mc-api.marketcheck.com/v2/decode/car/${encodeURIComponent(vin)}/specs?api_key=${marketCheckApiKey}`;
+    try {
+      const response = await axios.get(specsUrl);
+      const data = response.data;
+      
+      // Extract vehicle specs for pricing
+      const {
+        year,
+        make,
+        model,
+        trim,
+        transmission,
+        drivetrain,
+        fuel_type,
+        highway_mpg,
+        city_mpg,
+        engine_size,
+        engine_block,
+        cylinders,
+        doors
+      } = data;
+
+      // 2. Try MarketCheck's price prediction endpoint
+      const transmissionLower = transmission ? transmission.toLowerCase() : '';
+      
+      // Build query parameters, only including valid values
+      const queryParams = new URLSearchParams({
+        api_key: marketCheckApiKey,
+        car_type: "used",
+        year: year || '',
+        make: make || '',
+        model: model || '',
+        trim: trim || '',
+        transmission: transmissionLower === "manual" ? "Manual" : "Automatic",
+        drivetrain: drivetrain?.toLowerCase() === "fwd" ? "FWD" : drivetrain || '',
+        fuel_type: fuel_type || '',
+        latitude: 41.149358, // Default location
+        longitude: -96.145336, // Default location
+        miles: 20000 // Default mileage
+      });
+      
+      // Only add engine parameters if they have valid values
+      if (highway_mpg && !isNaN(parseInt(highway_mpg))) queryParams.append('highway_mpg', highway_mpg);
+      if (city_mpg && !isNaN(parseInt(city_mpg))) queryParams.append('city_mpg', city_mpg);
+      if (doors && !isNaN(parseInt(doors))) queryParams.append('doors', doors);
+      
+      // Extract engine size from engine string (e.g., "2.5L I4" -> "2.5")
+      if (data.engine) {
+        const engineMatch = data.engine.match(/(\d+\.?\d*)L/);
+        if (engineMatch) {
+          queryParams.append('engine_size', engineMatch[1]);
+        }
+      }
+
+      const priceUrl = `https://mc-api.marketcheck.com/v2/predict/car/price?${queryParams.toString()}`;
+      console.log('MarketCheck price prediction URL:', priceUrl);
+      
+      const priceResponse = await axios.get(priceUrl);
+      const priceData = priceResponse.data;
+      console.log('MarketCheck price response:', priceData);
+      
+      if (priceData?.price_range?.lower_bound) {
+        return {
+          estimatedValue: parseFloat(priceData.price_range.lower_bound),
+          source: 'MarketCheck API (Price Prediction)',
+          priceRange: priceData.price_range
+        };
+      }
+    } catch (error) {
+      console.error('MarketCheck specs/price endpoint error:', error.response?.data || error.message);
+    }
+
+    // 3. Try MarketCheck's vehicle history endpoint
+    const historyUrl = `https://mc-api.marketcheck.com/v2/history/car/${encodeURIComponent(vin)}?api_key=${marketCheckApiKey}`;
+    try {
+      const response = await axios.get(historyUrl);
+      const data = response.data;
+      console.log('MarketCheck history response:', data);
+      
+      if (data && Array.isArray(data) && data.length > 0) {
+        // Filter out unrealistic prices (e.g., > $100k for most vehicles)
+        const realisticListings = data.filter(listing => {
+          const price = parseFloat(listing.price);
+          return price && price > 1000 && price < 100000; // Reasonable price range
+        });
+        
+        if (realisticListings.length > 0) {
+          // Get the most recent realistic listing
+          const latestListing = realisticListings[0];
+          return {
+            estimatedValue: parseFloat(latestListing.price),
+            source: 'MarketCheck API (Vehicle History)',
+            listing: latestListing
+          };
+        }
+      }
+    } catch (error) {
+      console.error('MarketCheck history endpoint error:', error.response?.data || error.message);
+    }
+
+    // 4. Try MarketCheck's search endpoint
+    const searchUrl = `https://mc-api.marketcheck.com/v2/search/car/active?api_key=${marketCheckApiKey}&vin=${encodeURIComponent(vin)}`;
+    try {
+      const response = await axios.get(searchUrl);
+      const data = response.data;
+      
+      if (data && data.listings && data.listings.length > 0) {
+        const prices = data.listings
+          .filter(listing => {
+            const price = parseFloat(listing.price);
+            return price && price > 1000 && price < 100000; // Reasonable price range
+          })
+          .map(listing => parseFloat(listing.price));
+        
+        if (prices.length > 0) {
+          const averagePrice = prices.reduce((sum, price) => sum + price, 0) / prices.length;
+          return {
+            estimatedValue: Math.round(averagePrice),
+            source: 'MarketCheck API (Active Listings)'
+          };
+        }
+      }
+    } catch (error) {
+      console.error('MarketCheck search endpoint error:', error.response?.data || error.message);
+    }
+
+    throw new Error('No pricing data available from MarketCheck API');
+
+  } catch (error) {
+    console.error('Error fetching from MarketCheck API:', error);
+    throw error;
+  }
+};
+
+// Get vehicle specifications from VIN using MarketCheck API
+exports.getVehicleSpecs = async (req, res) => {
+  try {
+    const { vin } = req.params;
+
+    if (!vin) {
+      return res.status(400).json({
+        success: false,
+        error: 'VIN is required'
+      });
+    }
+
+    // Check if we have cached vehicle data first
+    const vehicle = await Vehicle.findOne({ vin: vin });
+    if (vehicle && vehicle.year && vehicle.make && vehicle.model) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          year: vehicle.year || '',
+          make: vehicle.make || '',
+          model: vehicle.model || '',
+          trim: vehicle.trim || '',
+          body_style: vehicle.bodyStyle || '',
+          engine: vehicle.engine || '',
+          transmission: vehicle.transmission || '',
+          drivetrain: vehicle.drivetrain || '',
+          fuel_type: vehicle.fuelType || '',
+          doors: vehicle.doors || '',
+          exterior_color: vehicle.color || '',
+          interior_color: vehicle.interiorColor || ''
+        },
+        source: 'Cached Data'
+      });
+    }
+
+    const marketCheckApiKey = process.env.MARKETCHECK_API_KEY;
+    
+    if (!marketCheckApiKey) {
+      // If no API key, try to extract basic info from VIN
+      return res.status(200).json({
+        success: true,
+        data: {},
+        source: 'VIN Decode (No API Key)'
+      });
+    }
+
+    // Use the vehicle specs endpoint from MarketCheck
+    const specsUrl = `https://mc-api.marketcheck.com/v2/decode/car/${encodeURIComponent(vin)}/specs?api_key=${marketCheckApiKey}`;
+    
+    try {
+      const response = await axios.get(specsUrl);
+      const data = response.data;
+      
+      // Extract only the needed vehicle specs for frontend
+      const vehicleSpecs = {
+        year: data.year || '',
+        make: data.make || '',
+        model: data.model || '',
+        trim: data.trim || '',
+        body_style: data.body_style || '',
+        engine: data.engine || '',
+        transmission: data.transmission || '',
+        drivetrain: data.drivetrain || '',
+        fuel_type: data.fuel_type || '',
+        doors: data.doors || '',
+        exterior_color: data.exterior_color || '',
+        interior_color: data.interior_color || ''
+      };
+
+      // Store specs in the vehicle record if it exists
+      if (vehicle) {
+        // Update the vehicle with basic specs
+        if (vehicleSpecs.year) vehicle.year = vehicleSpecs.year;
+        if (vehicleSpecs.make) vehicle.make = vehicleSpecs.make;
+        if (vehicleSpecs.model) vehicle.model = vehicleSpecs.model;
+        if (vehicleSpecs.body_style) vehicle.bodyStyle = vehicleSpecs.body_style;
+        if (vehicleSpecs.exterior_color) vehicle.color = vehicleSpecs.exterior_color;
+        
+        await vehicle.save();
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: vehicleSpecs,
+        source: 'MarketCheck API'
+      });
+    } catch (error) {
+      console.error('MarketCheck specs endpoint error:', error.response?.data || error.message);
+      
+      // If specs endpoint fails, try to get basic info from VIN
+      return res.status(200).json({
+        success: true,
+        data: {},
+        source: 'VIN Decode (API Unavailable)',
+        warning: 'Using basic VIN decode due to API rate limit'
+      });
+    }
+  } catch (error) {
+    console.error('Error in getVehicleSpecs:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch vehicle specifications. Please try again later or enter vehicle details manually.'
+    });
+  }
+};
+
 
 exports.checkUserExists = checkUserExists;

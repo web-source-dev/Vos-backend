@@ -87,52 +87,17 @@ const getVehicleDataFromVIN = async (vin) => {
     
     if (pricingData && pricingData.success && pricingData.data && pricingData.data.estimatedValue) {
       result.estimatedPrice = pricingData.data.estimatedValue;
-      console.log(`Found estimated price: $${result.estimatedPrice}`);
     }
     
     if (result.make && result.model && result.year) {
       return result;
     } else {
       console.warn('API returned incomplete data, using fallback');
-      return getFallbackVehicleData(vin);
     }
   } catch (error) {
     console.error('Error calling vehicle APIs:', error);
-    return getFallbackVehicleData(vin);
   }
 };
-
-// Fallback function when API is not available
-const getFallbackVehicleData = (vin) => {
-  // Simple VIN pattern matching for demo purposes
-  const vinUpper = vin.toUpperCase();
-  
-  if (vinUpper.includes('1HGBH41JXMN109186')) {
-    return { make: 'Honda', model: 'Civic', year: 2021, trim: 'LX', transmission: 'CVT', estimatedPrice: 22000 };
-  } else if (vinUpper.startsWith('WBA')) {
-    return { make: 'BMW', model: '328i', year: 2018, trim: 'Sport', transmission: 'Automatic', estimatedPrice: 28000 };
-  } else if (vinUpper.startsWith('1FT')) {
-    return { make: 'Ford', model: 'F-150', year: 2020, trim: 'XLT', transmission: 'Automatic', estimatedPrice: 35000 };
-  } else if (vinUpper.startsWith('1G1')) {
-    return { make: 'Chevrolet', model: 'Malibu', year: 2019, trim: 'LT', transmission: 'Automatic', estimatedPrice: 18000 };
-  } else if (vinUpper.startsWith('JM1')) {
-    return { make: 'Mazda', model: 'CX-5', year: 2020, trim: 'Sport', transmission: 'Automatic', estimatedPrice: 26000 };
-  } else if (vinUpper.startsWith('1N4')) {
-    return { make: 'Nissan', model: 'Altima', year: 2019, trim: 'S', transmission: 'CVT', estimatedPrice: 19000 };
-  } else if (vinUpper.startsWith('JTDBT')) {
-    return { make: 'Toyota', model: 'Prius', year: 2018, trim: 'L', transmission: 'CVT', estimatedPrice: 21000 };
-  }
-  
-  return {
-    make: 'Unknown',
-    model: 'Unknown',
-    year: new Date().getFullYear() - 5,
-    trim: 'Base',
-    transmission: 'Automatic',
-    estimatedPrice: 15000 // Default estimated price for unknown vehicles
-  };
-};
-
 // Create initial vehicle submission with VIN or License Plate
 exports.createVehicleSubmission = async (req, res) => {
   try {
@@ -469,72 +434,11 @@ exports.updateContactAndGenerateOffer = async (req, res) => {
 
 // Helper function to generate offer amount
 const generateOfferAmount = (submission) => {
+  // Use estimated price from VIN decode if available, otherwise use default
   let baseAmount = 15000; // Default base amount
   
-  // Use estimated price from VIN decode if available
   if (submission.vinOrPlate && submission.vinOrPlate.estimatedPrice > 0) {
     baseAmount = submission.vinOrPlate.estimatedPrice;
-  }
-  
-  // Adjust based on mileage
-  if (submission.basics && submission.basics.mileage) {
-    const mileage = submission.basics.mileage;
-    if (mileage < 30000) {
-      baseAmount *= 1.1; // 10% bonus for low mileage
-    } else if (mileage > 100000) {
-      baseAmount *= 0.9; // 10% reduction for high mileage
-    }
-  }
-  
-  // Adjust based on overall condition
-  if (submission.condition && submission.condition.overallCondition) {
-    const condition = submission.condition.overallCondition;
-    switch (condition) {
-      case 'Like New':
-        baseAmount *= 1.15;
-        break;
-      case 'Pretty Great':
-        baseAmount *= 1.05;
-        break;
-      case 'Just Okay':
-        baseAmount *= 0.95;
-        break;
-      case 'Kind of Rough':
-        baseAmount *= 0.85;
-        break;
-      case 'Major Issues':
-        baseAmount *= 0.7;
-        break;
-    }
-  }
-  
-  // Adjust based on accident history
-  if (submission.condition && submission.condition.accidentHistory) {
-    const accidents = submission.condition.accidentHistory;
-    if (accidents === '1 Accident') {
-      baseAmount *= 0.95;
-    } else if (accidents === '2 or More Accidents') {
-      baseAmount *= 0.85;
-    }
-  }
-  
-  // Adjust based on drivability
-  if (submission.condition && submission.condition.isDrivable === false) {
-    baseAmount *= 0.8;
-  }
-  
-  // Adjust for mechanical issues
-  if (submission.condition && submission.condition.mechanicalIssues && submission.condition.mechanicalIssues.length > 0) {
-    if (!submission.condition.mechanicalIssues.includes('No Mechanical or Electrical Issues')) {
-      baseAmount *= 0.9;
-    }
-  }
-  
-  // Adjust for engine issues
-  if (submission.condition && submission.condition.engineIssues && submission.condition.engineIssues.length > 0) {
-    if (!submission.condition.engineIssues.includes('No Engine Issues')) {
-      baseAmount *= 0.9;
-    }
   }
   
   // Round to nearest 100

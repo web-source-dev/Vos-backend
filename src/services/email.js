@@ -1,5 +1,8 @@
 const Brevo = require('@getbrevo/brevo');
 const User = require('../models/User');
+const dotenv = require('dotenv');
+
+dotenv.config();
 
 // Brevo API configuration
 const defaultClient = Brevo.ApiClient.instance;
@@ -1398,6 +1401,120 @@ const sendPasswordResetConfirmationEmail = async (userEmail, userName) => {
   }
 };
 
+/**
+ * Send driver's license verification approved email
+ * @param {Object} customer - Customer data
+ * @param {Object} vehicle - Vehicle data
+ * @param {Object} caseData - Case data
+ * @param {String} frontendUrl - Frontend URL
+ * @returns {Promise} - Promise resolving to the email info
+ */
+const sendDriverLicenseVerifiedEmail = async (customer, vehicle, caseData, frontendUrl) => {
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
+    to: customer.email1,
+    subject: 'VIN On Spot: Driver\'s License Verification Approved',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #3b82f6;">VIN On Spot: Driver's License Verification Approved</h2>
+        <p>Hello ${customer.firstName} ${customer.lastName},</p>
+        <p>Great news! Your driver's license verification has been approved.</p>
+        
+        <div style="background: #f0fdf4; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #22c55e;">
+          <h3 style="color: #166534; margin-top: 0;">Verification Status: Approved</h3>
+          <p style="color: #166534; margin-bottom: 10px;">Your driver's license has been successfully verified and your case can now proceed to the next stage.</p>
+        </div>
+        
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Case Details</h3>
+          <p style="color: #4b5563; margin: 5px 0;"><strong>Case ID:</strong> ${caseData._id}</p>
+          <p style="color: #4b5563; margin: 5px 0;"><strong>Vehicle:</strong> ${vehicle.year} ${vehicle.make} ${vehicle.model}</p>
+          <p style="color: #4b5563; margin: 5px 0;"><strong>Verification Date:</strong> ${new Date().toLocaleDateString()}</p>
+        </div>
+        
+        <div style="background: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+          <p style="margin: 0; color: #1e40af; font-size: 14px;">
+            <strong>Next Steps:</strong> Our team will continue processing your case. You'll receive updates as we move forward with your vehicle evaluation.
+          </p>
+        </div>
+        
+        <p>Thank you for using VIN On Spot!</p>
+        <p>Best regards,<br>The VOS Team</p>
+      </div>
+    `
+  };
+
+  try {
+    const info = await sendEmail(mailOptions);
+    return info;
+  } catch (error) {
+    console.error('Error sending driver license verified email:', error);
+    throw error;
+  }
+};
+
+/**
+ * Send driver's license verification declined email
+ * @param {Object} customer - Customer data
+ * @param {Object} vehicle - Vehicle data
+ * @param {Object} caseData - Case data
+ * @param {String} frontendUrl - Frontend URL
+ * @returns {Promise} - Promise resolving to the email info
+ */
+const sendDriverLicenseDeclinedEmail = async (customer, vehicle, caseData, frontendUrl) => {
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || '"VIN On Spot" <no-reply@vossystem.com>',
+    to: customer.email1,
+    subject: 'VIN On Spot: Driver\'s License Verification Issue',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #dc2626;">VIN On Spot: Driver's License Verification Issue</h2>
+        <p>Hello ${customer.firstName} ${customer.lastName},</p>
+        <p>We encountered an issue with your driver's license verification.</p>
+        
+        <div style="background: #fef2f2; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #dc2626;">
+          <h3 style="color: #991b1b; margin-top: 0;">Verification Status: Declined</h3>
+          <p style="color: #991b1b; margin-bottom: 10px;">We were unable to verify your driver's license. This could be due to image quality, document type, or other verification requirements.</p>
+        </div>
+        
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #1e293b; margin-top: 0;">Case Details</h3>
+          <p style="color: #4b5563; margin: 5px 0;"><strong>Case ID:</strong> ${caseData._id}</p>
+          <p style="color: #4b5563; margin: 5px 0;"><strong>Vehicle:</strong> ${vehicle.year} ${vehicle.make} ${vehicle.model}</p>
+          <p style="color: #4b5563; margin: 5px 0;"><strong>Verification Date:</strong> ${new Date().toLocaleDateString()}</p>
+        </div>
+        
+        <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+          <h3 style="color: #92400e; margin-top: 0;">What You Can Do</h3>
+          <ul style="color: #92400e; margin: 10px 0; padding-left: 20px;">
+            <li>Ensure your driver's license is valid and not expired</li>
+            <li>Take clear, well-lit photos of both front and back</li>
+            <li>Make sure all text is readable and not blurry</li>
+            <li>Contact us if you need assistance with the upload process</li>
+          </ul>
+        </div>
+        
+        <div style="background: #dbeafe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+          <p style="margin: 0; color: #1e40af; font-size: 14px;">
+            <strong>Need Help?</strong> Please contact us at (555) 123-4567 or reply to this email for assistance with your driver's license verification.
+          </p>
+        </div>
+        
+        <p>Thank you for using VIN On Spot!</p>
+        <p>Best regards,<br>The VOS Team</p>
+      </div>
+    `
+  };
+
+  try {
+    const info = await sendEmail(mailOptions);
+    return info;
+  } catch (error) {
+    console.error('Error sending driver license declined email:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   sendCustomerIntakeNotification,
   sendInspectionEmail,
@@ -1416,5 +1533,7 @@ module.exports = {
   sendEstimatorAssignmentEmail,
   sendDeclinedOfferFollowupEmail,
   sendPasswordResetEmail,
-  sendPasswordResetConfirmationEmail
+  sendPasswordResetConfirmationEmail,
+  sendDriverLicenseVerifiedEmail,
+  sendDriverLicenseDeclinedEmail
 }; 

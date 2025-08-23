@@ -213,6 +213,12 @@ const InspectionSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  // Calendar event tracking
+  calendarEvents: {
+    inspectorEventId: String,
+    estimatorEventId: String,
+    lastSyncAt: Date
   }
 });
 

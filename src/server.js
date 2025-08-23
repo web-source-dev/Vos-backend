@@ -63,8 +63,7 @@ app.use((req, res, next) => {
       fileSize: 10 * 1024 * 1024 // 10MB max file size
     },
     abortOnLimit: true,
-    useTempFiles: true,
-    tempFileDir: '/tmp/',
+    useTempFiles: false, // Changed to false to use memory instead of temp files
     debug: process.env.NODE_ENV === 'development'
   })(req, res, next);
 });

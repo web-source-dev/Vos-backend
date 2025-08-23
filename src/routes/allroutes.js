@@ -7,6 +7,7 @@ const {
   updateCase,
   customerIntake,
   scheduleInspection,
+  rescheduleInspection,
   getInspectionByToken,
   submitInspection,
   savePendingInspection,
@@ -37,6 +38,7 @@ const {
   getAllUsers,
   uploadDocument,
   uploadBillOfSaleDocument,
+  uploadDriverLicenseDocuments,
   savePaperworkByCaseId,
   saveCompletionData,
   getInspectorInspections,
@@ -54,6 +56,13 @@ const {
   confirmPayoff,
   deleteCase,
   checkUserExists,
+  getCasesByCustomerId,
+  getCustomers,
+  sendToDocuSign,
+  handleDocuSignWebhook,
+  getDocuSignStatus,
+  handleVeriffWebhook,
+  getVeriffStatus,
 } = require('../controllers/allcontrollers');
 
 // Import OBD2 controllers
@@ -80,10 +89,14 @@ router.get('/estimator/analytics', protect, isEstimator, async (req, res) => {
   getUserAnalytics(req, res);
 });
 
+// Customer management routes
+router.get('/customers', protect, getCustomers);
+
 // Case management routes (protected)
 router.get('/cases', protect, getCases);
 router.get('/cases/estimator', protect, isEstimator, getEstimatorCases);
 router.get('/cases/:caseId', protect, getCase);
+router.get('/customers/:customerId/cases', protect, getCasesByCustomerId);
 router.post('/cases', protect, createCase);
 router.put('/cases/:caseId', protect, updateCase);
 router.delete('/cases/:caseId', protect, deleteCase);
@@ -102,6 +115,7 @@ router.post('/send-customer-form', sendCustomerFormEmail);
 
 // Inspection scheduling (protected)
 router.post('/cases/:caseId/inspection', protect, scheduleInspection);
+router.put('/cases/:caseId/inspection', protect, rescheduleInspection);
 router.get('/inspection/:token', getInspectionByToken);
 router.post('/inspection/:token', submitInspection);
 router.put('/inspection/:token/pending', savePendingInspection);
@@ -120,6 +134,7 @@ router.put('/cases/:caseId/offer-decision', protect, updateOfferDecisionByCaseId
 // Document upload routes
 router.post('/upload', protect, uploadDocument);
 router.post('/cases/:caseId/bill-of-sale-upload', protect, uploadBillOfSaleDocument);
+router.post('/cases/:caseId/driver-license-upload', protect, uploadDriverLicenseDocuments);
 
 // Paperwork routes
 router.post('/quote/:token/paperwork', updatePaperwork);
@@ -163,6 +178,15 @@ router.get('/analytics', protect, getAnalytics);
 // Time tracking endpoints
 router.get('/cases/:caseId/time-tracking', protect, getTimeTrackingByCaseId);
 router.get('/time-tracking/analytics', protect, isAdmin, getTimeTrackingAnalytics);
+
+// DocuSign integration endpoints
+router.post('/cases/:caseId/docusign', protect, sendToDocuSign);
+router.post('/docusign/webhook', handleDocuSignWebhook); // Public endpoint for Zapier webhook
+router.get('/cases/:caseId/docusign/status', protect, getDocuSignStatus);
+
+// Veriff integration endpoints
+router.post('/veriff/webhook', handleVeriffWebhook); // Public endpoint for Veriff webhook
+router.get('/cases/:caseId/veriff/status', protect, getVeriffStatus);
 
 router.post('/stage-time', protect, async (req, res) => {
   try {

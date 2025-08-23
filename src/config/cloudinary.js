@@ -11,10 +11,10 @@ cloudinary.config({
 const uploadToCloudinary = async (buffer, options = {}) => {
   return new Promise((resolve, reject) => { 
     const uploadOptions = {
-      resource_type: 'image',
-      folder: 'vos-ownership-verification',
-      quality: 'auto',
-      fetch_format: 'auto',
+      resource_type: options.resource_type || 'image',
+      folder: options.folder || 'vos-ownership-verification',
+      quality: options.resource_type === 'image' ? 'auto' : undefined,
+      fetch_format: options.resource_type === 'image' ? 'auto' : undefined,
       ...options
     };
 

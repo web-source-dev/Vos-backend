@@ -7,10 +7,48 @@ const Transaction = require('../models/Transaction');
 const TimeTracking = require('../models/TimeTracking');
 const emailService = require('../services/email');
 const pdfService = require('../services/pdf');
+const zapierService = require('../services/zapier');
+const docusignService = require('../services/docusign');
 const User = require('../models/User');
 const path = require('path');
 const fs = require('fs').promises;
 const axios = require('axios');
+
+// Utility function to generate a default password
+const generateDefaultPassword = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let password = '';
+  for (let i = 0; i < 8; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
+};
+
+// Utility function to create a user account for a customer
+const createCustomerUser = async (customerData) => {
+  try {
+    // Generate a default password
+    const defaultPassword = generateDefaultPassword();
+    
+    // Create user account
+    const user = await User.create({
+      email: customerData.email1,
+      password: defaultPassword,
+      firstName: customerData.firstName,
+      lastName: customerData.lastName,
+      role: 'customer',
+      isVerified: false
+    });
+
+    return {
+      user,
+      defaultPassword
+    };
+  } catch (error) {
+    console.error('Error creating customer user account:', error);
+    throw error;
+  }
+};
 
 // Handle document upload
 exports.uploadDocument = async (req, res) => {
@@ -298,9 +336,24 @@ exports.createCase = async (req, res) => {
   try {
     const { customer: customerData, vehicle: vehicleData, documents, agentInfo } = req.body;
 
+    // Create user account for customer
+    let customerUser;
+    let defaultPassword;
+    try {
+      const userResult = await createCustomerUser(customerData);
+      customerUser = userResult.user;
+      defaultPassword = userResult.defaultPassword;
+    } catch (userError) {
+      console.error('Failed to create customer user account:', userError);
+      // Continue without user account if creation fails
+      customerUser = null;
+      defaultPassword = null;
+    }
+
     // Create customer record
     const customer = await Customer.create({
       ...customerData,
+      customerId: customerUser ? customerUser._id : null,
       agent: req.user.id,
       storeLocation: agentInfo.storeLocation
     });
@@ -354,6 +407,16 @@ exports.createCase = async (req, res) => {
         req.user, // Agent data
         process.env.FRONTEND_URL
       );
+
+      // Send customer account creation email if user account was created
+      if (customerUser && defaultPassword) {
+        await emailService.sendCustomerAccountCreationEmail(
+          customer,
+          customerUser,
+          defaultPassword,
+          process.env.FRONTEND_URL
+        );
+      }
     } catch (emailError) {
       console.error('Error sending customer creation emails:', emailError);
       // Don't fail the request if email fails
@@ -543,12 +606,148 @@ exports.scheduleInspection = async (req, res) => {
       process.env.FRONTEND_URL
     );
 
+    // Send Zapier webhook for calendar events
+    console.log('=== SCHEDULE INSPECTION - ZAPIER CALL ===');
+    console.log('About to call Zapier service for inspection scheduling');
+    console.log('Inspection data:', {
+      id: inspection._id,
+      scheduledDate: inspection.scheduledDate,
+      scheduledTime: inspection.scheduledTime,
+      inspector: inspection.inspector
+    });
+    console.log('Case data:', {
+      id: caseData._id,
+      customer: caseData.customer ? {
+        firstName: caseData.customer.firstName,
+        lastName: caseData.customer.lastName,
+        email: caseData.customer.email1
+      } : null,
+      vehicle: caseData.vehicle ? {
+        year: caseData.vehicle.year,
+        make: caseData.vehicle.make,
+        model: caseData.vehicle.model
+      } : null
+    });
+    
+    try {
+      const zapierResult = await zapierService.scheduleInspection(inspection, caseData, false);
+      console.log('=== SCHEDULE INSPECTION - ZAPIER RESULT ===');
+      console.log('Zapier service call completed successfully');
+      console.log('Zapier result:', zapierResult);
+    } catch (zapierError) {
+      console.log('=== SCHEDULE INSPECTION - ZAPIER ERROR ===');
+      console.error('Zapier webhook error (non-blocking):', zapierError);
+      console.error('Error details:', {
+        message: zapierError.message,
+        stack: zapierError.stack
+      });
+      // Don't fail the request if Zapier is down
+    }
+
     res.status(200).json({
       success: true,
       data: inspection
     });
   } catch (error) {
     console.error('Schedule inspection error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Reschedule inspection
+exports.rescheduleInspection = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+    const { inspector, scheduledDate, scheduledTime, notesForInspector, dueByDate, dueByTime } = req.body;
+
+    const caseData = await Case.findById(caseId)
+      .populate('customer')
+      .populate('vehicle')
+      .populate('inspection');
+
+    if (!caseData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
+
+    if (!caseData.inspection) {
+      return res.status(404).json({
+        success: false,
+        error: 'No inspection found for this case'
+      });
+    }
+
+    // Update inspection record
+    const updatedInspection = await Inspection.findByIdAndUpdate(
+      caseData.inspection._id,
+      {
+        inspector,
+        scheduledDate,
+        scheduledTime,
+        dueByDate,
+        dueByTime,
+        notesForInspector,
+        status: 'scheduled'
+      },
+      { new: true }
+    ).populate('vehicle').populate('customer');
+
+    if (!updatedInspection) {
+      return res.status(404).json({
+        success: false,
+        error: 'Failed to update inspection'
+      });
+    }
+
+    // Send Zapier webhook for calendar rescheduling
+    console.log('=== RESCHEDULE INSPECTION - ZAPIER CALL ===');
+    console.log('About to call Zapier service for inspection rescheduling');
+    console.log('Updated inspection data:', {
+      id: updatedInspection._id,
+      scheduledDate: updatedInspection.scheduledDate,
+      scheduledTime: updatedInspection.scheduledTime,
+      inspector: updatedInspection.inspector
+    });
+    console.log('Case data:', {
+      id: caseData._id,
+      customer: caseData.customer ? {
+        firstName: caseData.customer.firstName,
+        lastName: caseData.customer.lastName,
+        email: caseData.customer.email1
+      } : null,
+      vehicle: caseData.vehicle ? {
+        year: caseData.vehicle.year,
+        make: caseData.vehicle.make,
+        model: caseData.vehicle.model
+      } : null
+    });
+    
+    try {
+      const zapierResult = await zapierService.scheduleInspection(updatedInspection, caseData, true);
+      console.log('=== RESCHEDULE INSPECTION - ZAPIER RESULT ===');
+      console.log('Zapier service call completed successfully');
+      console.log('Zapier result:', zapierResult);
+    } catch (zapierError) {
+      console.log('=== RESCHEDULE INSPECTION - ZAPIER ERROR ===');
+      console.error('Zapier reschedule webhook error (non-blocking):', zapierError);
+      console.error('Error details:', {
+        message: zapierError.message,
+        stack: zapierError.stack
+      });
+      // Don't fail the request if Zapier is down
+    }
+
+    res.status(200).json({
+      success: true,
+      data: updatedInspection
+    });
+  } catch (error) {
+    console.error('Reschedule inspection error:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -2902,9 +3101,24 @@ exports.customerIntake = async (req, res) => {
       vehicle: vehicleData.year + ' ' + vehicleData.make + ' ' + vehicleData.model
     });
 
+    // Create user account for customer
+    let customerUser;
+    let defaultPassword;
+    try {
+      const userResult = await createCustomerUser(customerData);
+      customerUser = userResult.user;
+      defaultPassword = userResult.defaultPassword;
+    } catch (userError) {
+      console.error('Failed to create customer user account:', userError);
+      // Continue without user account if creation fails
+      customerUser = null;
+      defaultPassword = null;
+    }
+
     // Create customer record (without agent assignment)
     const customer = await Customer.create({
       ...customerData,
+      customerId: customerUser ? customerUser._id : null,
       agent: null, // No agent assigned yet
       storeLocation: '' // Will be assigned by agent later
     });
@@ -2958,6 +3172,16 @@ exports.customerIntake = async (req, res) => {
         populatedCase,
         process.env.FRONTEND_URL
       );
+
+      // Send customer account creation email if user account was created
+      if (customerUser && defaultPassword) {
+        await emailService.sendCustomerAccountCreationEmail(
+          customer,
+          customerUser,
+          defaultPassword,
+          process.env.FRONTEND_URL
+        );
+      }
     } catch (emailError) {
       console.error('Error sending customer creation emails:', emailError);
       // Don't fail the request if email fails
@@ -4290,3 +4514,672 @@ exports.getVehicleSpecs = async (req, res) => {
 
 
 exports.checkUserExists = checkUserExists;
+
+// Handle Veriff webhook callback
+exports.handleVeriffWebhook = async (req, res) => {
+  try {
+    console.log('=== VERIFF WEBHOOK RECEIVED ===');
+    console.log('Webhook data:', req.body);
+
+    const webhookData = req.body;
+    
+    // Validate webhook data
+    if (!webhookData.verification || !webhookData.verification.id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid webhook data: missing verification ID'
+      });
+    }
+
+    const verificationId = webhookData.verification.id;
+    const status = webhookData.verification.status;
+    const document = webhookData.verification.document;
+    const person = webhookData.verification.person;
+
+    console.log('Processing Veriff webhook:', {
+      verificationId,
+      status,
+      documentType: document?.type,
+      personName: person ? `${person.givenName} ${person.lastName}` : 'Unknown'
+    });
+
+    // Find case by Veriff session ID or verification ID
+    let caseData = await Case.findOne({
+      $or: [
+        { 'veriff.sessionId': verificationId },
+        { 'veriff.verificationId': verificationId }
+      ]
+    }).populate('customer vehicle');
+
+    if (!caseData) {
+      console.log('No case found for Veriff verification ID:', verificationId);
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found for this verification'
+      });
+    }
+
+    // Update case with Veriff verification results
+    const updateData = {
+      'veriff.status': status,
+      'veriff.verifiedAt': new Date(),
+      'veriff.document': document,
+      'veriff.person': person
+    };
+
+    // If verification is approved, mark documents as verified
+    if (status === 'approved') {
+      updateData['documents.driverLicenseVerified'] = true;
+      updateData['documents.verificationDate'] = new Date();
+    }
+
+    const updatedCase = await Case.findByIdAndUpdate(
+      caseData._id,
+      updateData,
+      { new: true }
+    ).populate('customer vehicle');
+
+    console.log('Case updated with Veriff verification results:', {
+      caseId: updatedCase._id,
+      status: status,
+      documentVerified: status === 'approved'
+    });
+
+    // Send email notification about verification status
+    try {
+      const emailService = require('../services/email');
+      
+      if (status === 'approved') {
+        await emailService.sendDriverLicenseVerifiedEmail(
+          updatedCase.customer,
+          updatedCase.vehicle,
+          updatedCase,
+          process.env.FRONTEND_URL
+        );
+      } else if (status === 'declined') {
+        await emailService.sendDriverLicenseDeclinedEmail(
+          updatedCase.customer,
+          updatedCase.vehicle,
+          updatedCase,
+          process.env.FRONTEND_URL
+        );
+      }
+    } catch (emailError) {
+      console.error('Error sending verification status email:', emailError);
+      // Don't fail the webhook if email fails
+    }
+
+    console.log('=== VERIFF WEBHOOK PROCESSED SUCCESSFULLY ===');
+
+    res.status(200).json({
+      success: true,
+      data: {
+        caseId: updatedCase._id,
+        status: status,
+        message: 'Veriff webhook processed successfully'
+      }
+    });
+
+  } catch (error) {
+    console.error('=== VERIFF WEBHOOK ERROR ===');
+    console.error('Error processing Veriff webhook:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process Veriff webhook'
+    });
+  }
+};
+
+// Get Veriff verification status for a case
+exports.getVeriffStatus = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+
+    const caseData = await Case.findById(caseId)
+      .populate('customer vehicle');
+
+    if (!caseData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
+
+    if (!caseData.veriff) {
+      return res.status(404).json({
+        success: false,
+        error: 'No Veriff verification found for this case'
+      });
+    }
+
+    // If we have a session ID, try to get the latest status from Veriff
+    let currentStatus = caseData.veriff.status;
+    if (caseData.veriff.sessionId) {
+      try {
+        const veriffService = require('../services/veriff');
+        const statusResult = await veriffService.getSessionStatus(caseData.veriff.sessionId);
+        
+        if (statusResult.success && statusResult.status !== currentStatus) {
+          // Update the case with the new status
+          await Case.findByIdAndUpdate(caseId, {
+            'veriff.status': statusResult.status,
+            'veriff.lastChecked': new Date()
+          });
+          currentStatus = statusResult.status;
+        }
+      } catch (statusError) {
+        console.error('Error getting current Veriff status:', statusError);
+        // Continue with stored status
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        sessionId: caseData.veriff.sessionId,
+        verificationId: caseData.veriff.verificationId,
+        status: currentStatus,
+        submittedAt: caseData.veriff.submittedAt,
+        verifiedAt: caseData.veriff.verifiedAt,
+        document: caseData.veriff.document,
+        person: caseData.veriff.person,
+        driverLicenseVerified: caseData.documents?.driverLicenseVerified || false
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting Veriff status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get Veriff status'
+    });
+  }
+};
+
+// Get cases by customer ID
+exports.getCasesByCustomerId = async (req, res) => {
+  try {
+    const { customerId } = req.params;
+
+    // Validate customerId format
+    if (!customerId || customerId.length !== 24) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid customer ID format'
+      });
+    }
+
+    // Find all cases for this customer by looking for Customer records that have this user's ID as customerId
+    // Then find cases that reference those Customer records
+    const customerRecords = await Customer.find({ customerId: customerId });
+    const customerIds = customerRecords.map(c => c._id);
+    
+    const cases = await Case.find({
+      customer: { $in: customerIds }
+    })
+      .populate('customer')
+      .populate('vehicle')
+      .populate('inspection')
+      .populate('quote')
+      .populate('transaction')
+      .sort('-createdAt');
+
+    res.status(200).json({
+      success: true,
+      data: cases
+    });
+  } catch (error) {
+    console.error('Error getting cases by customer ID:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Get all customers (users with role 'customer')
+exports.getCustomers = async (req, res) => {
+  try {
+    const customers = await User.find({ role: 'customer' })
+      .select('firstName lastName email createdAt')
+      .sort('-createdAt');
+
+    // For each customer, get their case count and total value
+    const customersWithStats = await Promise.all(
+      customers.map(async (customer) => {
+        // Find all cases for this customer by looking for Customer records that have this user's ID as customerId
+        // Then find cases that reference those Customer records
+        const customerRecords = await Customer.find({ customerId: customer._id });
+        const customerIds = customerRecords.map(c => c._id);
+        
+        console.log(`Customer ${customer.email}: Found ${customerRecords.length} customer records, IDs:`, customerIds);
+        
+        const cases = await Case.find({
+          customer: { $in: customerIds }
+        }).populate('vehicle quote transaction');
+        
+        console.log(`Customer ${customer.email}: Found ${cases.length} cases`);
+
+        // Calculate stats
+        const totalCases = cases.length;
+        const completedCases = cases.filter(case_ => case_.status === 'completed').length;
+        const totalValue = cases.reduce((sum, case_) => {
+          if (case_.status === 'completed') {
+            return sum + (case_.transaction?.billOfSale?.salePrice || 
+                         case_.quote?.offerDecision?.finalAmount || 
+                         case_.quote?.offerAmount || 0);
+          }
+          return sum;
+        }, 0);
+
+        // Get last activity
+        const lastCase = cases.sort((a, b) => 
+          new Date(b.updatedAt || b.createdAt).getTime() - 
+          new Date(a.updatedAt || a.createdAt).getTime()
+        )[0];
+
+        return {
+          _id: customer._id,
+          firstName: customer.firstName,
+          lastName: customer.lastName,
+          email: customer.email,
+          createdAt: customer.createdAt,
+          stats: {
+            totalCases,
+            completedCases,
+            totalValue,
+            lastActivity: lastCase ? {
+              timestamp: lastCase.updatedAt || lastCase.createdAt,
+              caseId: lastCase._id,
+              status: lastCase.status
+            } : null
+          }
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      data: customersWithStats
+    });
+  } catch (error) {
+    console.error('Error getting customers:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// ===== DOCUSIGN INTEGRATION FUNCTIONS =====
+
+/**
+ * Send paperwork to DocuSign for e-signature
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+exports.sendToDocuSign = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+    
+    console.log('=== SEND TO DOCUSIGN START ===');
+    console.log('Case ID:', caseId);
+
+    // Get complete case data with all related documents
+    const caseData = await Case.findById(caseId)
+      .populate('customer')
+      .populate('vehicle')
+      .populate('inspection')
+      .populate('quote')
+      .populate('transaction');
+
+    if (!caseData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
+
+    // Validate that case is ready for DocuSign
+    if (!caseData.transaction || !caseData.transaction.billOfSale) {
+      return res.status(400).json({
+        success: false,
+        error: 'Case must have completed paperwork before sending to DocuSign'
+      });
+    }
+
+    // Send to DocuSign via Zapier
+    const docusignResult = await docusignService.generateAndSendToDocuSign(caseData);
+
+    if (!docusignResult.success) {
+      console.error('DocuSign integration failed:', docusignResult.error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to send to DocuSign',
+        details: docusignResult.error
+      });
+    }
+
+    // Update transaction with DocuSign information
+    if (caseData.transaction) {
+      await Transaction.findByIdAndUpdate(caseData.transaction._id, {
+        $set: {
+          'docusign.envelopeId': docusignResult.envelopeId,
+          'docusign.status': 'sent',
+          'docusign.recipientViewUrl': docusignResult.recipientViewUrl,
+          'docusign.envelopeUrl': docusignResult.data?.envelopeUrl || '',
+          'docusign.documentUrl': docusignResult.data?.documentUrl || '',
+          'docusign.cloudinaryPublicId': docusignResult.data?.cloudinaryPublicId || ''
+        }
+      });
+    }
+
+    console.log('=== SEND TO DOCUSIGN SUCCESS ===');
+    console.log('Envelope ID:', docusignResult.envelopeId);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        envelopeId: docusignResult.envelopeId,
+        status: docusignResult.status,
+        recipientViewUrl: docusignResult.recipientViewUrl,
+        message: 'Documents sent to DocuSign successfully'
+      }
+    });
+
+  } catch (error) {
+    console.error('=== SEND TO DOCUSIGN ERROR ===');
+    console.error('Error sending to DocuSign:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to send documents to DocuSign'
+    });
+  }
+};
+
+/**
+ * Handle DocuSign webhook callback from Zapier
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+exports.handleDocuSignWebhook = async (req, res) => {
+  try {
+    console.log('=== DOCUSIGN WEBHOOK RECEIVED ===');
+    console.log('Webhook data:', req.body);
+
+    const webhookData = req.body;
+    
+    // Validate webhook data
+    if (!webhookData.envelopeId || !webhookData.caseId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid webhook data: missing envelopeId or caseId'
+      });
+    }
+
+    // Process the webhook
+    const result = await docusignService.handleDocuSignWebhook(webhookData);
+
+    console.log('=== DOCUSIGN WEBHOOK PROCESSED ===');
+    console.log('Result:', result);
+
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+
+  } catch (error) {
+    console.error('=== DOCUSIGN WEBHOOK ERROR ===');
+    console.error('Error processing DocuSign webhook:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process DocuSign webhook'
+    });
+  }
+};
+
+/**
+ * Get DocuSign status for a case
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+exports.getDocuSignStatus = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+
+    const caseData = await Case.findById(caseId)
+      .populate('transaction');
+
+    if (!caseData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
+
+    if (!caseData.transaction || !caseData.transaction.docusign) {
+      return res.status(404).json({
+        success: false,
+        error: 'No DocuSign information found for this case'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        envelopeId: caseData.transaction.docusign.envelopeId,
+        status: caseData.transaction.docusign.status,
+        completedAt: caseData.transaction.docusign.completedAt,
+        recipientViewUrl: caseData.transaction.docusign.recipientViewUrl,
+        envelopeUrl: caseData.transaction.docusign.envelopeUrl,
+        signedDocuments: caseData.transaction.docusign.signedDocuments
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting DocuSign status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get DocuSign status'
+    });
+  }
+};
+
+// Upload driver's license documents and verify with Veriff
+exports.uploadDriverLicenseDocuments = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+    
+    console.log('Driver license upload request received:', {
+      caseId,
+      hasFiles: !!req.files,
+      filesKeys: req.files ? Object.keys(req.files) : [],
+      contentType: req.headers['content-type']
+    });
+    
+    if (!req.files || !req.files.driverLicenseFront || !req.files.driverLicenseRear) {
+      return res.status(400).json({
+        success: false,
+        error: 'Both driver license front and rear images are required.'
+      });
+    }
+
+    const frontFile = req.files.driverLicenseFront;
+    const rearFile = req.files.driverLicenseRear;
+
+    // Validate file data
+    if (!frontFile.data || frontFile.data.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Front image file is empty or invalid.'
+      });
+    }
+
+    if (!rearFile.data || rearFile.data.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Rear image file is empty or invalid.'
+      });
+    }
+
+    console.log('File upload details:', {
+      frontFile: {
+        name: frontFile.name,
+        size: frontFile.size,
+        mimetype: frontFile.mimetype,
+        dataLength: frontFile.data ? frontFile.data.length : 0
+      },
+      rearFile: {
+        name: rearFile.name,
+        size: rearFile.size,
+        mimetype: rearFile.mimetype,
+        dataLength: rearFile.data ? rearFile.data.length : 0
+      }
+    });
+
+    // Find the case
+    const caseData = await Case.findById(caseId)
+      .populate('customer')
+      .populate('vehicle');
+
+    if (!caseData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
+
+    // Import Veriff service
+    const veriffService = require('../services/veriff');
+
+    // Step 1: Upload both images to Cloudinary (keep existing functionality)
+    console.log('Starting Cloudinary uploads...');
+    
+    const uploadPromises = [
+      uploadToCloudinary(frontFile.data, {
+        folder: 'vos-drivers-licenses',
+        public_id: `case-${caseId}-front-${Date.now()}`
+      }),
+      uploadToCloudinary(rearFile.data, {
+        folder: 'vos-drivers-licenses',
+        public_id: `case-${caseId}-rear-${Date.now()}`
+      })
+    ];
+
+    let frontResult, rearResult;
+    try {
+      [frontResult, rearResult] = await Promise.all(uploadPromises);
+      console.log('Cloudinary uploads completed successfully');
+    } catch (uploadError) {
+      console.error('Cloudinary upload error:', uploadError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to upload images to Cloudinary: ' + uploadError.message
+      });
+    }
+
+    // Step 2: Start Veriff verification process
+    let veriffResult = null;
+    try {
+      console.log('Starting Veriff verification process...');
+      
+      const customerData = {
+        firstName: caseData.customer.firstName,
+        lastName: caseData.customer.lastName,
+        email: caseData.customer.email1,
+        phone: caseData.customer.phone || ''
+      };
+
+      veriffResult = await veriffService.completeDriverLicenseVerification(
+        customerData,
+        caseId,
+        frontFile.data,
+        rearFile.data,
+        frontFile.mimetype,
+        rearFile.mimetype
+      );
+
+      console.log('Veriff verification process completed:', veriffResult);
+
+    } catch (veriffError) {
+      console.error('Veriff verification error:', veriffError);
+      // Don't fail the entire request if Veriff fails, just log the error
+      // The images are still uploaded to Cloudinary and stored in the case
+    }
+
+    // Step 3: Update case with document URLs and Veriff information
+    const updateData = {
+      documents: {
+        driverLicenseFront: {
+          path: frontResult.secure_url,
+          originalName: frontFile.name,
+          uploadedAt: new Date()
+        },
+        driverLicenseRear: {
+          path: rearResult.secure_url,
+          originalName: rearFile.name,
+          uploadedAt: new Date()
+        }
+      }
+    };
+
+    // Add Veriff information if available
+    if (veriffResult && veriffResult.success) {
+      updateData.veriff = {
+        sessionId: veriffResult.sessionId,
+        verificationId: veriffResult.verificationId,
+        status: veriffResult.status,
+        submittedAt: new Date()
+      };
+    }
+
+    const updatedCase = await Case.findByIdAndUpdate(
+      caseId,
+      updateData,
+      { new: true }
+    ).populate('customer').populate('vehicle');
+
+    // Step 4: Send webhook data (keep existing functionality)
+    const webhookData = {
+      caseId: caseId,
+      customerName: `${caseData.customer.firstName} ${caseData.customer.lastName}`,
+      customerEmail: caseData.customer.email1,
+      driverLicenseFront: {
+        url: frontResult.secure_url,
+        publicId: frontResult.public_id,
+        originalName: frontFile.name
+      },
+      driverLicenseRear: {
+        url: rearResult.secure_url,
+        publicId: rearResult.public_id,
+        originalName: rearFile.name
+      },
+      uploadedAt: new Date().toISOString()
+    };
+
+    // Add Veriff information to webhook data if available
+    if (veriffResult && veriffResult.success) {
+      webhookData.veriff = {
+        sessionId: veriffResult.sessionId,
+        verificationId: veriffResult.verificationId,
+        status: veriffResult.status
+      };
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        frontUrl: frontResult.secure_url,
+        rearUrl: rearResult.secure_url,
+        case: updatedCase,
+        veriff: veriffResult
+      }
+    });
+  } catch (error) {
+    console.error('Driver license upload error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error uploading driver license documents'
+    });
+  }
+};

@@ -4515,186 +4515,6 @@ exports.getVehicleSpecs = async (req, res) => {
 
 exports.checkUserExists = checkUserExists;
 
-// Handle Veriff webhook callback
-exports.handleVeriffWebhook = async (req, res) => {
-  try {
-    console.log('=== VERIFF WEBHOOK RECEIVED ===');
-    console.log('Webhook data:', req.body);
-
-    const webhookData = req.body;
-    
-    // Validate webhook data
-    if (!webhookData.verification || !webhookData.verification.id) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid webhook data: missing verification ID'
-      });
-    }
-
-    const verificationId = webhookData.verification.id;
-    const status = webhookData.verification.status;
-    const document = webhookData.verification.document;
-    const person = webhookData.verification.person;
-
-    console.log('Processing Veriff webhook:', {
-      verificationId,
-      status,
-      documentType: document?.type,
-      personName: person ? `${person.givenName} ${person.lastName}` : 'Unknown'
-    });
-
-    // Find case by Veriff session ID or verification ID
-    let caseData = await Case.findOne({
-      $or: [
-        { 'veriff.sessionId': verificationId },
-        { 'veriff.verificationId': verificationId }
-      ]
-    }).populate('customer vehicle');
-
-    if (!caseData) {
-      console.log('No case found for Veriff verification ID:', verificationId);
-      return res.status(404).json({
-        success: false,
-        error: 'Case not found for this verification'
-      });
-    }
-
-    // Update case with Veriff verification results
-    const updateData = {
-      'veriff.status': status,
-      'veriff.verifiedAt': new Date(),
-      'veriff.document': document,
-      'veriff.person': person
-    };
-
-    // If verification is approved, mark documents as verified
-    if (status === 'approved') {
-      updateData['documents.driverLicenseVerified'] = true;
-      updateData['documents.verificationDate'] = new Date();
-    }
-
-    const updatedCase = await Case.findByIdAndUpdate(
-      caseData._id,
-      updateData,
-      { new: true }
-    ).populate('customer vehicle');
-
-    console.log('Case updated with Veriff verification results:', {
-      caseId: updatedCase._id,
-      status: status,
-      documentVerified: status === 'approved'
-    });
-
-    // Send email notification about verification status
-    try {
-      const emailService = require('../services/email');
-      
-      if (status === 'approved') {
-        await emailService.sendDriverLicenseVerifiedEmail(
-          updatedCase.customer,
-          updatedCase.vehicle,
-          updatedCase,
-          process.env.FRONTEND_URL
-        );
-      } else if (status === 'declined') {
-        await emailService.sendDriverLicenseDeclinedEmail(
-          updatedCase.customer,
-          updatedCase.vehicle,
-          updatedCase,
-          process.env.FRONTEND_URL
-        );
-      }
-    } catch (emailError) {
-      console.error('Error sending verification status email:', emailError);
-      // Don't fail the webhook if email fails
-    }
-
-    console.log('=== VERIFF WEBHOOK PROCESSED SUCCESSFULLY ===');
-
-    res.status(200).json({
-      success: true,
-      data: {
-        caseId: updatedCase._id,
-        status: status,
-        message: 'Veriff webhook processed successfully'
-      }
-    });
-
-  } catch (error) {
-    console.error('=== VERIFF WEBHOOK ERROR ===');
-    console.error('Error processing Veriff webhook:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to process Veriff webhook'
-    });
-  }
-};
-
-// Get Veriff verification status for a case
-exports.getVeriffStatus = async (req, res) => {
-  try {
-    const { caseId } = req.params;
-
-    const caseData = await Case.findById(caseId)
-      .populate('customer vehicle');
-
-    if (!caseData) {
-      return res.status(404).json({
-        success: false,
-        error: 'Case not found'
-      });
-    }
-
-    if (!caseData.veriff) {
-      return res.status(404).json({
-        success: false,
-        error: 'No Veriff verification found for this case'
-      });
-    }
-
-    // If we have a session ID, try to get the latest status from Veriff
-    let currentStatus = caseData.veriff.status;
-    if (caseData.veriff.sessionId) {
-      try {
-        const veriffService = require('../services/veriff');
-        const statusResult = await veriffService.getSessionStatus(caseData.veriff.sessionId);
-        
-        if (statusResult.success && statusResult.status !== currentStatus) {
-          // Update the case with the new status
-          await Case.findByIdAndUpdate(caseId, {
-            'veriff.status': statusResult.status,
-            'veriff.lastChecked': new Date()
-          });
-          currentStatus = statusResult.status;
-        }
-      } catch (statusError) {
-        console.error('Error getting current Veriff status:', statusError);
-        // Continue with stored status
-      }
-    }
-
-    res.status(200).json({
-      success: true,
-      data: {
-        sessionId: caseData.veriff.sessionId,
-        verificationId: caseData.veriff.verificationId,
-        status: currentStatus,
-        submittedAt: caseData.veriff.submittedAt,
-        verifiedAt: caseData.veriff.verifiedAt,
-        document: caseData.veriff.document,
-        person: caseData.veriff.person,
-        driverLicenseVerified: caseData.documents?.driverLicenseVerified || false
-      }
-    });
-
-  } catch (error) {
-    console.error('Error getting Veriff status:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get Veriff status'
-    });
-  }
-};
 
 // Get cases by customer ID
 exports.getCasesByCustomerId = async (req, res) => {
@@ -5182,4 +5002,131 @@ exports.uploadDriverLicenseDocuments = async (req, res) => {
       error: 'Error uploading driver license documents'
     });
   }
+};
+
+// Create Veriff session for JavaScript SDK
+exports.createVeriffSession = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+    const { person, vendorData } = req.body;
+
+    console.log('Creating Veriff session for case:', caseId);
+    console.log('Person data:', person);
+    console.log('Vendor data:', vendorData);
+
+    // Find the case
+    const caseData = await Case.findById(caseId)
+      .populate('customer')
+      .populate('vehicle');
+
+    if (!caseData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
+
+    // Import Veriff service
+    const veriffService = require('../services/veriff');
+
+    // Create Veriff session
+    const sessionResult = await veriffService.createSession(
+      {
+        firstName: person?.givenName || caseData.customer.firstName,
+        lastName: person?.lastName || caseData.customer.lastName,
+        email: caseData.customer.email1,
+        phone: caseData.customer.phone || ''
+      },
+      caseId
+    );
+
+    if (!sessionResult.success) {
+      throw new Error('Failed to create Veriff session');
+    }
+
+    // Update case with Veriff session information
+    await Case.findByIdAndUpdate(caseId, {
+      veriff: {
+        sessionId: sessionResult.sessionId,
+        status: 'pending',
+        submittedAt: new Date()
+      }
+    });
+
+    console.log('Veriff session created successfully:', sessionResult.sessionId);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        sessionId: sessionResult.sessionId,
+        url: sessionResult.url,
+        status: sessionResult.status,
+        sessionToken: sessionResult.sessionToken
+      }
+    });
+
+  } catch (error) {
+    console.error('Error creating Veriff session:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create Veriff session'
+    });
+  }
+};
+
+
+// Handle Veriff webhook callback
+exports.handleVeriffWebhook = async (req, res) => {
+  try {
+
+    console.log('webhook received:', req.body);
+
+
+    // received data is Webhook data: {
+    //   documentType: 'PASSPORT',
+    //   firstName: 'Eduardo',
+    //   lastName: 'Campos [EXAMPLE]',
+    //   reason: 'Suspected document tampering',
+    //   sessionId: '4f9f628d-1ea1-4b5b-87a0-4bfbfb1a2420',
+    //   verificationStatus: 'declined'
+    // }
+
+    const { documentType, firstName, lastName, reason, sessionId, verificationStatus } = req.body;
+
+    // Find the case
+    const caseData = await Case.findOne({ 'veriff.sessionId': sessionId });
+
+    if (!caseData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
+
+    // Update the case with the webhook data
+    await Case.findByIdAndUpdate(caseData._id, {
+      'veriff.verificationId': sessionId,
+      'veriff.documentType': documentType,
+      'veriff.reason': reason,
+      'veriff.status': verificationStatus,
+      'veriff.verifiedAt': new Date(),
+    });
+    
+    console.log('Case updated successfully');
+
+    caseData.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Case updated successfully'
+    });
+
+  } catch (error) {
+    console.log('Error handling webhook:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to handle webhook'
+    });
+  }
+
 };

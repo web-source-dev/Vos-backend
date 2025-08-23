@@ -28,20 +28,7 @@ class VeriffService {
       }
 
       const sessionData = {
-        verification: {
-          callback: process.env.VERIFF_WEBHOOK_URL || `${process.env.NEXT_PUBLIC_API_URL}/api/veriff/webhook`,
-          document: {
-            type: 'DRIVERS_LICENSE'
-          },
-          person: {
-            givenName: customerData.firstName,
-            lastName: customerData.lastName,
-            email: customerData.email,
-            phoneNumber: customerData.phone || ''
-          }
-        },
-        timestamp: new Date().toISOString(),
-        reference: caseId // Use VOS case ID as reference
+        verification: {}
       };
 
       console.log('Creating Veriff session with data:', {
@@ -50,28 +37,34 @@ class VeriffService {
         callback: sessionData.verification.callback
       });
 
-      const response = await axios.post(`${this.baseURL}/sessions`, sessionData, {
+      console.log('Full session data being sent:', JSON.stringify(sessionData, null, 2));
+
+      const response = await axios.post(`${this.baseURL}/v1/sessions`, sessionData, {
         headers: {
           'Content-Type': 'application/json',
-          'X-AUTH-CLIENT': this.apiKey,
-          'X-SIGNATURE': this.generateSignature(sessionData)
+          'x-auth-client': this.apiKey,
+          'x-hmac-signature': this.generateSignature(sessionData)
         }
       });
 
       console.log('Veriff session created successfully:', {
         sessionId: response.data.verification.id,
-        status: response.data.verification.status
+        status: response.data.verification.status,
+        sessionToken: response.data.verification.sessionToken
       });
 
       return {
         success: true,
         sessionId: response.data.verification.id,
         status: response.data.verification.status,
-        url: response.data.verification.url
+        url: response.data.verification.url,
+        sessionToken: response.data.verification.sessionToken
       };
 
     } catch (error) {
       console.error('Error creating Veriff session:', error.response?.data || error.message);
+      console.error('Error status:', error.response?.status);
+      console.error('Error headers:', error.response?.headers);
       throw new Error(`Failed to create Veriff session: ${error.response?.data?.message || error.message}`);
     }
   }
@@ -90,23 +83,33 @@ class VeriffService {
         throw new Error('Veriff API credentials not configured');
       }
 
+      // Convert imageType to proper context value
+      const context = imageType === 'front' ? 'document-front' : 'document-back';
+      
+      // Create base64 data URL
+      const base64Content = imageBuffer.toString('base64');
+      const dataUrl = `data:${mimeType};base64,${base64Content}`;
+
       const mediaData = {
-        image: imageBuffer.toString('base64'),
-        imageType: imageType,
-        timestamp: new Date().toISOString()
+        image: {
+          context: context,
+          content: dataUrl,
+          timestamp: new Date().toISOString()
+        }
       };
 
-      console.log(`Uploading ${imageType} image to Veriff session ${sessionId}`);
+      console.log(`Uploading ${context} image to Veriff session ${sessionId}`);
+      console.log(`Image size: ${imageBuffer.length} bytes, MIME type: ${mimeType}`);
 
-      const response = await axios.post(`${this.baseURL}/sessions/${sessionId}/media`, mediaData, {
+      const response = await axios.post(`${this.baseURL}/v1/sessions/${sessionId}/media`, mediaData, {
         headers: {
           'Content-Type': 'application/json',
-          'X-AUTH-CLIENT': this.apiKey,
-          'X-SIGNATURE': this.generateSignature(mediaData)
+          'x-auth-client': this.apiKey,
+          'x-hmac-signature': this.generateSignature(mediaData)
         }
       });
 
-      console.log(`${imageType} image uploaded successfully to session ${sessionId}`);
+      console.log(`${context} image uploaded successfully to session ${sessionId}`);
 
       return {
         success: true,
@@ -116,6 +119,7 @@ class VeriffService {
 
     } catch (error) {
       console.error(`Error uploading ${imageType} image to Veriff:`, error.response?.data || error.message);
+      console.error('Error status:', error.response?.status);
       throw new Error(`Failed to upload ${imageType} image: ${error.response?.data?.message || error.message}`);
     }
   }
@@ -132,21 +136,24 @@ class VeriffService {
       }
 
       const submitData = {
-        status: 'submitted',
-        timestamp: new Date().toISOString()
+        verification: {
+          status: 'submitted'
+        }
       };
 
       console.log(`Submitting Veriff session ${sessionId} for verification`);
+      console.log('Submit data:', JSON.stringify(submitData, null, 2));
 
-      const response = await axios.patch(`${this.baseURL}/sessions/${sessionId}`, submitData, {
+      const response = await axios.patch(`${this.baseURL}/v1/sessions/${sessionId}`, submitData, {
         headers: {
           'Content-Type': 'application/json',
-          'X-AUTH-CLIENT': this.apiKey,
-          'X-SIGNATURE': this.generateSignature(submitData)
+          'x-auth-client': this.apiKey,
+          'x-hmac-signature': this.generateSignature(submitData)
         }
       });
 
       console.log(`Session ${sessionId} submitted successfully for verification`);
+      console.log('Response:', JSON.stringify(response.data, null, 2));
 
       return {
         success: true,
@@ -156,50 +163,28 @@ class VeriffService {
 
     } catch (error) {
       console.error('Error submitting Veriff session:', error.response?.data || error.message);
+      console.error('Error status:', error.response?.status);
       throw new Error(`Failed to submit session: ${error.response?.data?.message || error.message}`);
     }
   }
 
   /**
-   * Get session status
-   * @param {string} sessionId - Veriff session ID
-   * @returns {Promise<Object>} Session status
-   */
-  async getSessionStatus(sessionId) {
-    try {
-      if (!this.apiKey || !this.apiSecret) {
-        throw new Error('Veriff API credentials not configured');
-      }
-
-      const response = await axios.get(`${this.baseURL}/sessions/${sessionId}`, {
-        headers: {
-          'X-AUTH-CLIENT': this.apiKey,
-          'X-SIGNATURE': this.generateSignature({})
-        }
-      });
-
-      return {
-        success: true,
-        status: response.data.verification.status,
-        verificationId: response.data.verification.id,
-        document: response.data.verification.document,
-        person: response.data.verification.person
-      };
-
-    } catch (error) {
-      console.error('Error getting Veriff session status:', error.response?.data || error.message);
-      throw new Error(`Failed to get session status: ${error.response?.data?.message || error.message}`);
-    }
-  }
-
-  /**
    * Generate signature for Veriff API requests
-   * @param {Object} payload - Request payload
+   * @param {Object|string} payload - Request payload or session ID for GET requests
    * @returns {string} Generated signature
    */
   generateSignature(payload) {
     const crypto = require('crypto');
-    const payloadString = JSON.stringify(payload);
+    
+    let payloadString;
+    if (typeof payload === 'string') {
+      // For GET requests, use the session ID directly
+      payloadString = payload;
+    } else {
+      // For POST/PATCH requests, stringify the object
+      payloadString = JSON.stringify(payload);
+    }
+    
     const signature = crypto
       .createHmac('sha256', this.apiSecret)
       .update(payloadString)

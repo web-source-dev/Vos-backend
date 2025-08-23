@@ -45,7 +45,26 @@ const CaseSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
       }
-    }
+    },
+    driverLicenseVerified: {
+      type: Boolean,
+      default: false
+    },
+    verificationDate: Date
+  },
+  veriff: {
+    sessionId: String,
+    verificationId: String,
+    documentType: String,
+    status: {
+      type: String,
+      enum: ['pending', 'submitted', 'approved', 'declined', 'expired', 'resubmission_requested'],
+      default: 'pending'
+    },
+    submittedAt: Date,
+    verifiedAt: Date,
+    lastChecked: Date,
+    reason: String,
   },
   currentStage: {
     type: Number,

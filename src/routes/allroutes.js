@@ -62,7 +62,7 @@ const {
   handleDocuSignWebhook,
   getDocuSignStatus,
   handleVeriffWebhook,
-  getVeriffStatus,
+  createVeriffSession,
 } = require('../controllers/allcontrollers');
 
 // Import OBD2 controllers
@@ -186,7 +186,7 @@ router.get('/cases/:caseId/docusign/status', protect, getDocuSignStatus);
 
 // Veriff integration endpoints
 router.post('/veriff/webhook', handleVeriffWebhook); // Public endpoint for Veriff webhook
-router.get('/cases/:caseId/veriff/status', protect, getVeriffStatus);
+router.post('/cases/:caseId/veriff/session', protect, createVeriffSession);
 
 router.post('/stage-time', protect, async (req, res) => {
   try {

@@ -8,7 +8,6 @@ const TimeTracking = require('../models/TimeTracking');
 const emailService = require('../services/email');
 const pdfService = require('../services/pdf');
 const zapierService = require('../services/zapier');
-const docusignService = require('../services/docusign');
 const User = require('../models/User');
 const path = require('path');
 const fs = require('fs').promises;
@@ -25,6 +24,16 @@ const createCustomerUser = async (customerData) => {
   try {
     // Generate a default password
     const defaultPassword = generateDefaultPassword();
+
+    if(customerData.email1){
+      const existingUser = await User.findOne({ email: customerData.email1 });
+      if(existingUser){
+        return {
+          user: existingUser,
+          defaultPassword
+        };
+      }
+    }
     
     // Create user account
     const user = await User.create({
@@ -4626,181 +4635,6 @@ exports.getCustomers = async (req, res) => {
     });
   }
 };
-
-// ===== DOCUSIGN INTEGRATION FUNCTIONS =====
-
-/**
- * Send paperwork to DocuSign for e-signature
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- */
-exports.sendToDocuSign = async (req, res) => {
-  try {
-    const { caseId } = req.params;
-    
-    console.log('=== SEND TO DOCUSIGN START ===');
-    console.log('Case ID:', caseId);
-
-    // Get complete case data with all related documents
-    const caseData = await Case.findById(caseId)
-      .populate('customer')
-      .populate('vehicle')
-      .populate('inspection')
-      .populate('quote')
-      .populate('transaction');
-
-    if (!caseData) {
-      return res.status(404).json({
-        success: false,
-        error: 'Case not found'
-      });
-    }
-
-    // Validate that case is ready for DocuSign
-    if (!caseData.transaction || !caseData.transaction.billOfSale) {
-      return res.status(400).json({
-        success: false,
-        error: 'Case must have completed paperwork before sending to DocuSign'
-      });
-    }
-
-    // Send to DocuSign via Zapier
-    const docusignResult = await docusignService.generateAndSendToDocuSign(caseData);
-
-    if (!docusignResult.success) {
-      console.error('DocuSign integration failed:', docusignResult.error);
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to send to DocuSign',
-        details: docusignResult.error
-      });
-    }
-
-    // Update transaction with DocuSign information
-    if (caseData.transaction) {
-      await Transaction.findByIdAndUpdate(caseData.transaction._id, {
-        $set: {
-          'docusign.envelopeId': docusignResult.envelopeId,
-          'docusign.status': 'sent',
-          'docusign.recipientViewUrl': docusignResult.recipientViewUrl,
-          'docusign.envelopeUrl': docusignResult.data?.envelopeUrl || '',
-          'docusign.documentUrl': docusignResult.data?.documentUrl || '',
-          'docusign.cloudinaryPublicId': docusignResult.data?.cloudinaryPublicId || ''
-        }
-      });
-    }
-
-    console.log('=== SEND TO DOCUSIGN SUCCESS ===');
-    console.log('Envelope ID:', docusignResult.envelopeId);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        envelopeId: docusignResult.envelopeId,
-        status: docusignResult.status,
-        recipientViewUrl: docusignResult.recipientViewUrl,
-        message: 'Documents sent to DocuSign successfully'
-      }
-    });
-
-  } catch (error) {
-    console.error('=== SEND TO DOCUSIGN ERROR ===');
-    console.error('Error sending to DocuSign:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to send documents to DocuSign'
-    });
-  }
-};
-
-/**
- * Handle DocuSign webhook callback from Zapier
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- */
-exports.handleDocuSignWebhook = async (req, res) => {
-  try {
-    console.log('=== DOCUSIGN WEBHOOK RECEIVED ===');
-    console.log('Webhook data:', req.body);
-
-    const webhookData = req.body;
-    
-    // Validate webhook data
-    if (!webhookData.envelopeId || !webhookData.caseId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid webhook data: missing envelopeId or caseId'
-      });
-    }
-
-    // Process the webhook
-    const result = await docusignService.handleDocuSignWebhook(webhookData);
-
-    console.log('=== DOCUSIGN WEBHOOK PROCESSED ===');
-    console.log('Result:', result);
-
-    res.status(200).json({
-      success: true,
-      data: result
-    });
-
-  } catch (error) {
-    console.error('=== DOCUSIGN WEBHOOK ERROR ===');
-    console.error('Error processing DocuSign webhook:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to process DocuSign webhook'
-    });
-  }
-};
-
-/**
- * Get DocuSign status for a case
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- */
-exports.getDocuSignStatus = async (req, res) => {
-  try {
-    const { caseId } = req.params;
-
-    const caseData = await Case.findById(caseId)
-      .populate('transaction');
-
-    if (!caseData) {
-      return res.status(404).json({
-        success: false,
-        error: 'Case not found'
-      });
-    }
-
-    if (!caseData.transaction || !caseData.transaction.docusign) {
-      return res.status(404).json({
-        success: false,
-        error: 'No DocuSign information found for this case'
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: {
-        envelopeId: caseData.transaction.docusign.envelopeId,
-        status: caseData.transaction.docusign.status,
-        completedAt: caseData.transaction.docusign.completedAt,
-        recipientViewUrl: caseData.transaction.docusign.recipientViewUrl,
-        envelopeUrl: caseData.transaction.docusign.envelopeUrl,
-        signedDocuments: caseData.transaction.docusign.signedDocuments
-      }
-    });
-
-  } catch (error) {
-    console.error('Error getting DocuSign status:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get DocuSign status'
-    });
-  }
-};
-
 // Upload driver's license documents and verify with Veriff
 exports.uploadDriverLicenseDocuments = async (req, res) => {
   try {

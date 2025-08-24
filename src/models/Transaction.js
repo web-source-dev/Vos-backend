@@ -116,27 +116,6 @@ const TransactionSchema = new mongoose.Schema({
   documents: {
     signedBillOfSale: String,
   },
-  // DocuSign integration fields
-  docusign: {
-    envelopeId: String,
-    status: {
-      type: String,
-      enum: ['sent', 'delivered', 'signed', 'completed', 'declined', 'voided'],
-      default: 'sent'
-    },
-    completedAt: Date,
-    signedDocuments: [{
-      documentName: String,
-      documentUrl: String,
-      signedAt: Date
-    }],
-    event: String,
-    recipientViewUrl: String,
-    envelopeUrl: String,
-    // Cloudinary document storage
-    documentUrl: String,
-    cloudinaryPublicId: String
-  },
   paymentStatus: {
     type: String,
     enum: ['pending', 'processing', 'completed', 'failed'],

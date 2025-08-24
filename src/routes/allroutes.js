@@ -58,9 +58,6 @@ const {
   checkUserExists,
   getCasesByCustomerId,
   getCustomers,
-  sendToDocuSign,
-  handleDocuSignWebhook,
-  getDocuSignStatus,
   handleVeriffWebhook,
   createVeriffSession,
 } = require('../controllers/allcontrollers');
@@ -178,11 +175,6 @@ router.get('/analytics', protect, getAnalytics);
 // Time tracking endpoints
 router.get('/cases/:caseId/time-tracking', protect, getTimeTrackingByCaseId);
 router.get('/time-tracking/analytics', protect, isAdmin, getTimeTrackingAnalytics);
-
-// DocuSign integration endpoints
-router.post('/cases/:caseId/docusign', protect, sendToDocuSign);
-router.post('/docusign/webhook', handleDocuSignWebhook); // Public endpoint for Zapier webhook
-router.get('/cases/:caseId/docusign/status', protect, getDocuSignStatus);
 
 // Veriff integration endpoints
 router.post('/veriff/webhook', handleVeriffWebhook); // Public endpoint for Veriff webhook

@@ -2,7 +2,7 @@ const axios = require('axios');
 
 class ZapierService {
   constructor() {
-    this.webhookUrl = "https://hooks.zapier.com/hooks/catch/21472219/uyewgmk/";
+    this.webhookUrl = "https://hooks.zapier.com/hooks/catch/24284026/utxb0pa/";
     this.defaultAttendees = [
       'amy.livelsberger@vinonspot.com',
       'olajahwon.michael@vinonspot.com', 

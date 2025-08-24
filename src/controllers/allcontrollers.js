@@ -16,11 +16,7 @@ const axios = require('axios');
 
 // Utility function to generate a default password
 const generateDefaultPassword = () => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let password = '';
-  for (let i = 0; i < 8; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
+ const password = 'vosCustomer';
   return password;
 };
 

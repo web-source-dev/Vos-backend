@@ -66,6 +66,18 @@ const CaseSchema = new mongoose.Schema({
     lastChecked: Date,
     reason: String,
   },
+  signnow: {
+    documentId: String,
+    status:{
+      type: String,
+      enum: ['pending', 'sent', 'signed', 'completed', 'declined', 'expired'],
+      default: 'pending'
+    },
+    sentDocumentUrl: String,
+    sentAt: Date,
+    completedAt: Date,
+    signedDocumentUrl: String
+  },
   currentStage: {
     type: Number,
     min: 1,

@@ -60,6 +60,9 @@ const {
   getCustomers,
   handleVeriffWebhook,
   createVeriffSession,
+  generatePDFPackageAndSendToWebhook,
+  getWebhookStatus,
+  handleSignNowWebhook,
 } = require('../controllers/allcontrollers');
 
 // Import OBD2 controllers
@@ -179,6 +182,14 @@ router.get('/time-tracking/analytics', protect, isAdmin, getTimeTrackingAnalytic
 // Veriff integration endpoints
 router.post('/veriff/webhook', handleVeriffWebhook); // Public endpoint for Veriff webhook
 router.post('/cases/:caseId/veriff/session', protect, createVeriffSession);
+
+// PDF package and webhook endpoints
+router.post('/cases/:caseId/send-pdf-package', protect, generatePDFPackageAndSendToWebhook);
+router.get('/cases/:caseId/webhook-status', protect, getWebhookStatus);
+
+
+router.get('/signnow/webhook-listen', protect, handleSignNowWebhook);
+
 
 router.post('/stage-time', protect, async (req, res) => {
   try {

@@ -850,9 +850,235 @@ function getRiskLevel(score) {
   }
 }
 
+/**
+ * Generate a complete PDF package containing Quote Summary, Inspection Report, and Bill of Sale
+ * @param {Object} caseData - The case data containing all information
+ * @returns {Promise<Object>} - Promise resolving to the PDF file path and name
+ */
+async function generateCompletePDFPackage(caseData) {
+  try {
+    // Create upload directory if it doesn't exist
+    const pdfDir = path.join(__dirname, '../../uploads/pdfs');
+    fsp.mkdir(pdfDir, { recursive: true });
+
+    // Create a unique filename
+    const fileName = `complete-package-${caseData._id}-${Date.now()}.pdf`;
+    const filePath = path.join(pdfDir, fileName);
+
+    // Get the required data
+    const customer = caseData.customer || {};
+    const vehicle = caseData.vehicle || {};
+    const inspection = caseData.inspection || {};
+    const quote = caseData.quote || {};
+    const transaction = caseData.transaction || {};
+
+    // Create a new PDF document
+    const doc = new PDFDocument({
+      size: 'LETTER',
+      margins: {
+        top: 40,
+        bottom: 40,
+        left: 40,
+        right: 40
+      }
+    });
+
+    // Pipe the PDF into a file
+    const stream = fs.createWriteStream(filePath);
+    doc.pipe(stream);
+
+    // ===== COVER PAGE =====
+    doc.fontSize(24).text('VOS - COMPLETE CASE PACKAGE', {align: 'center', color: '#1e40af'});
+    doc.moveDown(0.5);
+    doc.fontSize(20).text('QUOTE SUMMARY', {align: 'center', color: '#1e40af'});
+    doc.moveDown(1);
+
+    // Vehicle identification
+    addSectionHeader(doc, 'VEHICLE IDENTIFICATION');
+    doc.moveDown(0.3);
+    
+    const vehicleInfo = [
+      ['Year', vehicle.year || 'N/A'],
+      ['Make', vehicle.make || 'N/A'],
+      ['Model', vehicle.model || 'N/A'],
+      ['VIN', vehicle.vin || 'Not provided'],
+      ['Mileage', vehicle.currentMileage || 'N/A'],
+      ['Color', vehicle.color || 'N/A'],
+      ['Title Status', vehicle.titleStatus || 'Not specified']
+    ];
+    
+    addInfoTable(doc, vehicleInfo);
+    doc.moveDown(0.5);
+
+    // Customer information
+    addSectionHeader(doc, 'CUSTOMER INFORMATION');
+    doc.moveDown(0.3);
+    
+    const customerInfo = [
+      ['Full Name', `${customer.firstName || ''} ${customer.lastName || ''}`],
+      ['Primary Phone', customer.cellPhone || 'Not provided'],
+      ['Primary Email', customer.email1 || 'Not provided'],
+      ['Source', getSourceLabel(customer.source) || 'Not specified']
+    ];
+    
+    addInfoTable(doc, customerInfo);
+    doc.moveDown(0.5);
+
+    // Market value analysis
+    addSectionHeader(doc, 'MARKET VALUE ANALYSIS');
+    doc.moveDown(0.3);
+    
+    if (vehicle.estimatedValue) {
+      const marketValue = vehicle.estimatedValue;
+      const offerAmount = quote.offerAmount || 0;
+      const difference = marketValue - offerAmount;
+      const percentage = marketValue > 0 ? ((difference / marketValue) * 100) : 0;
+      
+      const marketInfo = [
+        ['MarketCheck Value', `$${marketValue.toLocaleString()}`],
+        ['VOS Offer', `$${offerAmount.toLocaleString()}`],
+        ['Difference', `$${difference.toLocaleString()} (${percentage.toFixed(1)}%)`]
+      ];
+      
+      addInfoTable(doc, marketInfo);
+    } else {
+      doc.fontSize(10).text('MarketCheck Estimated Value: Not available', {color: '#6b7280'});
+    }
+    doc.moveDown(0.5);
+
+    // ===== INSPECTION REPORT SECTION =====
+    doc.addPage();
+    doc.fontSize(20).text('INSPECTION REPORT', {align: 'center', color: '#1e40af'});
+    doc.moveDown(1);
+
+    // Inspection overview
+    addSectionHeader(doc, 'INSPECTION OVERVIEW');
+    doc.moveDown(0.3);
+    
+    const inspectionInfo = [
+      ['Overall Rating', `${inspection.overallRating || 'N/A'}/5`],
+      ['Inspector', `${inspection.inspector?.firstName || ''} ${inspection.inspector?.lastName || ''}`],
+      ['Inspection Date', inspection.completedAt ? moment(inspection.completedAt).format('MMMM D, YYYY') : 'Not completed'],
+      ['Total Sections', inspection.sections ? inspection.sections.length : 0],
+      ['Overall Score', `${inspection.overallScore || 'N/A'}/${inspection.maxPossibleScore || 'N/A'}`]
+    ];
+    
+    addInfoTable(doc, inspectionInfo);
+    doc.moveDown(0.5);
+
+    // Detailed section analysis
+    if (inspection.sections && inspection.sections.length > 0) {
+      addSectionHeader(doc, 'DETAILED SECTION ANALYSIS');
+      doc.moveDown(0.3);
+      
+      inspection.sections.forEach((section, index) => {
+        doc.fontSize(11).text(`${index + 1}. ${section.name.toUpperCase()}`, {color: '#1e40af'});
+        doc.moveDown(0.2);
+        
+        const sectionInfo = [
+          ['Rating', `${section.rating || 'N/A'}/5`],
+          ['Score', `${section.score || 'N/A'}/${section.maxScore || 'N/A'}`],
+          ['Status', section.completed ? 'COMPLETED' : 'INCOMPLETE']
+        ];
+        
+        addInfoTable(doc, sectionInfo);
+        
+        if (section.description) {
+          doc.fontSize(9).text(`Description: ${section.description}`, {color: '#6b7280'});
+          doc.moveDown(0.2);
+        }
+        
+        doc.moveDown(0.3);
+      });
+    }
+
+    // OBD2 diagnostic summary
+    if (quote.obd2Scan && quote.obd2Scan.extractedCodes && quote.obd2Scan.extractedCodes.length > 0) {
+      addSectionHeader(doc, 'OBD2 DIAGNOSTIC SUMMARY');
+      doc.moveDown(0.3);
+      
+      const obd2Info = [
+        ['Total Codes Found', quote.obd2Scan.extractedCodes.length],
+        ['Critical Codes', quote.obd2Scan.criticalCodes ? quote.obd2Scan.criticalCodes.length : 0]
+      ];
+      
+      addInfoTable(doc, obd2Info);
+      doc.moveDown(0.5);
+    }
+
+    // Safety assessment
+    if (inspection.safetyIssues && inspection.safetyIssues.length > 0) {
+      addSectionHeader(doc, 'SAFETY ASSESSMENT');
+      doc.moveDown(0.3);
+      
+      const severityCounts = {
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0
+      };
+      
+      inspection.safetyIssues.forEach(issue => {
+        severityCounts[issue.severity]++;
+      });
+      
+      const safetyInfo = [
+        ['Critical Issues', severityCounts.critical],
+        ['High Priority', severityCounts.high],
+        ['Medium Priority', severityCounts.medium],
+        ['Low Priority', severityCounts.low]
+      ];
+      
+      addInfoTable(doc, safetyInfo);
+      doc.moveDown(0.5);
+    }
+
+    // Professional recommendations
+    if (inspection.recommendations && inspection.recommendations.length > 0) {
+      addSectionHeader(doc, 'PROFESSIONAL RECOMMENDATIONS');
+      doc.moveDown(0.3);
+      
+      inspection.recommendations.slice(0, 5).forEach((recommendation, index) => {
+        doc.fontSize(10).text(`${index + 1}. ${recommendation}`);
+        doc.moveDown(0.2);
+      });
+      
+      if (inspection.recommendations.length > 5) {
+        doc.fontSize(9).text(`... and ${inspection.recommendations.length - 5} more recommendations`, {color: '#6b7280'});
+      }
+      doc.moveDown(0.5);
+    }
+
+    // ===== BILL OF SALE SECTION =====
+    doc.addPage();
+    doc.fontSize(20).text('BILL OF SALE', {align: 'center', color: '#1e40af'});
+    doc.moveDown(1);
+
+    // Add the complete bill of sale content
+    addBillOfSaleContent(doc, customer, vehicle, transaction.billOfSale || {});
+
+    // Finalize the PDF and end the stream
+    doc.end();
+
+    // Wait for the stream to finish
+    return new Promise((resolve, reject) => {
+      stream.on('finish', () => {
+        resolve({
+          filePath,
+          fileName
+        });
+      });
+      stream.on('error', reject);
+    });
+  } catch (error) {
+    console.error('Error generating Complete PDF Package:', error);
+    throw error;
+  }
+}
 
 module.exports = {
   generateBillOfSalePDF,
   generateCasePDF,
   generateQuoteSummaryPDF,
+  generateCompletePDFPackage,
 };

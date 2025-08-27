@@ -8,6 +8,7 @@ const TimeTracking = require('../models/TimeTracking');
 const emailService = require('../services/email');
 const pdfService = require('../services/pdf');
 const zapierService = require('../services/zapier');
+const webhookService = require('../services/webhook');
 const User = require('../models/User');
 const path = require('path');
 const fs = require('fs').promises;
@@ -4959,4 +4960,181 @@ exports.handleVeriffWebhook = async (req, res) => {
     });
   }
 
+};
+
+// Generate PDF package and send to webhook
+exports.generatePDFPackageAndSendToWebhook = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+
+    console.log('=== GENERATE PDF PACKAGE AND SEND TO WEBHOOK START ===');
+    console.log('caseId:', caseId);
+    console.log('User:', req.user ? { id: req.user.id, role: req.user.role } : 'No user');
+
+    // Find the case with all populated data
+    const caseData = await Case.findById(caseId)
+      .populate('customer')
+      .populate('vehicle')
+      .populate('inspection')
+      .populate('quote')
+      .populate('transaction');
+
+    if (!caseData) {
+      console.log('Case not found for ID:', caseId);
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
+
+    console.log('Case data found:', {
+      id: caseData._id,
+      customer: caseData.customer ? caseData.customer._id : null,
+      vehicle: caseData.vehicle ? caseData.vehicle._id : null,
+      quote: caseData.quote ? caseData.quote._id : null,
+      inspection: caseData.inspection ? caseData.inspection._id : null,
+      transaction: caseData.transaction ? caseData.transaction._id : null
+    });
+
+    // Generate the complete PDF package
+    console.log('Generating complete PDF package...');
+    const pdfResult = await pdfService.generateCompletePDFPackage(caseData);
+
+    console.log('PDF package generated successfully:', pdfResult.filePath);
+
+    // Prepare buyer information (the user handling the case)
+    const buyer = {
+      firstName: req.user.firstName,
+      lastName: req.user.lastName,
+      email: req.user.email,
+      id: req.user.id,
+      role: req.user.role
+    };
+
+    console.log('Buyer information:', buyer);
+
+
+    // Send PDF package to webhook
+    console.log('Sending PDF package to webhook...');
+    const webhookResult = await webhookService.sendPDFPackageToWebhook(
+      caseData,
+      buyer,
+      pdfResult.filePath
+    );
+
+    console.log('Webhook result:', webhookResult);
+
+    // Clean up the temporary PDF file
+    try {
+      await fs.unlink(pdfResult.filePath);
+      console.log('Temporary PDF file cleaned up');
+    } catch (cleanupError) {
+      console.warn('Failed to clean up temporary PDF file:', cleanupError.message);
+    }
+
+    console.log('=== GENERATE PDF PACKAGE AND SEND TO WEBHOOK SUCCESS ===');
+
+    // Update the case with the webhook result
+    await Case.findByIdAndUpdate(caseId, {
+      'signnow.status': 'sent',
+      'signnow.sentDocumentUrl': webhookResult?.pdfUrl || null,
+      'signnow.sentAt': new Date()
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        message: 'Document package generated and sent for signing',
+        pdfUrl: webhookResult?.pdfUrl || null,
+        webhookSuccess: webhookResult?.success || false,
+        caseId: caseData._id
+      }
+    });
+
+  } catch (error) {
+    console.error('=== GENERATE PDF PACKAGE AND SEND TO WEBHOOK ERROR ===');
+    console.error('Error generating PDF package and sending to webhook:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// Get webhook status for a case
+exports.getWebhookStatus = async (req, res) => {
+  try {
+    const { caseId } = req.params;
+
+    console.log('=== GET WEBHOOK STATUS START ===');
+    console.log('caseId:', caseId);
+    console.log('User:', req.user ? { id: req.user.id, role: req.user.role } : 'No user');
+
+    // Validate caseId format
+    if (!caseId || caseId.length !== 24) {
+      console.log('Invalid case ID format:', caseId);
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid case ID format'
+      });
+    }
+
+    // Find the case
+    const caseData = await Case.findById(caseId)
+      .populate('customer')
+      .populate('vehicle')
+      .populate('quote')
+      .populate('transaction');
+    
+    if (!caseData) {
+      console.log('Case not found for ID:', caseId);
+      return res.status(404).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
+
+    // Extract webhook status information
+    const webhookStatus = {
+      caseId: caseData._id,
+      status: caseData.signnow?.status || 'pending',
+      sentDocumentUrl: caseData.signnow?.sentDocumentUrl || null,
+      signedDocumentUrl: caseData.signnow?.signedDocumentUrl || null,
+      sentAt: caseData.signnow?.sentAt || null,
+      completedAt: caseData.signnow?.completedAt || null,
+      documentId: caseData.signnow?.documentId || null,
+      hasBeenSent: !!(caseData.signnow?.status && caseData.signnow.status !== 'pending'),
+      isCompleted: caseData.signnow?.status === 'completed' || caseData.signnow?.status === 'signed',
+      isSigned: !!(caseData.signnow?.signedDocumentUrl)
+    };
+
+    console.log('Webhook status:', webhookStatus);
+    console.log('=== GET WEBHOOK STATUS SUCCESS ===');
+
+    res.status(200).json({
+      success: true,
+      data: webhookStatus
+    });
+  } catch (error) {
+    console.error('=== GET WEBHOOK STATUS ERROR ===');
+    console.error('Error getting webhook status:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+exports.handleSignNowWebhook = async (req, res) => {
+  try {
+    console.log('SignNow webhook received:', req.body);
+  } catch (error) {
+    console.error('Error handling SignNow webhook:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to handle SignNow webhook'
+    });
+  }
 };

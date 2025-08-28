@@ -5066,14 +5066,9 @@ exports.generatePDFPackageAndSendToWebhook = async (req, res) => {
 exports.getWebhookStatus = async (req, res) => {
   try {
     const { caseId } = req.params;
-
-    console.log('=== GET WEBHOOK STATUS START ===');
-    console.log('caseId:', caseId);
-    console.log('User:', req.user ? { id: req.user.id, role: req.user.role } : 'No user');
-
     // Validate caseId format
     if (!caseId || caseId.length !== 24) {
-      console.log('Invalid case ID format:', caseId);
+ 
       return res.status(400).json({
         success: false,
         error: 'Invalid case ID format'
@@ -5088,7 +5083,6 @@ exports.getWebhookStatus = async (req, res) => {
       .populate('transaction');
     
     if (!caseData) {
-      console.log('Case not found for ID:', caseId);
       return res.status(404).json({
         success: false,
         error: 'Case not found'
@@ -5096,7 +5090,7 @@ exports.getWebhookStatus = async (req, res) => {
     }
 
     // Extract webhook status information
-    const webhookStatus = {
+    let webhookStatus = {
       caseId: caseData._id,
       status: caseData.signnow?.status || 'pending',
       sentDocumentUrl: caseData.signnow?.sentDocumentUrl || null,
@@ -5109,17 +5103,61 @@ exports.getWebhookStatus = async (req, res) => {
       isSigned: !!(caseData.signnow?.signedDocumentUrl)
     };
 
-    console.log('Webhook status:', webhookStatus);
-    console.log('=== GET WEBHOOK STATUS SUCCESS ===');
+    // If we have a document ID, check SignNow status
+    if (caseData.signnow?.documentId) {
+      console.log('Checking SignNow status for document:', caseData.signnow.documentId);
+      
+      try {
+        const signnowService = require('../services/signnow');
+        const signnowResult = await signnowService.checkStatusAndGetDownloadLink(caseData.signnow.documentId);
+        
+        if (signnowResult.success) {
+          // Update webhook status with SignNow data
+          webhookStatus.signnowStatus = signnowResult.status;
+          webhookStatus.isSigned = signnowResult.isSigned;
+          webhookStatus.signatures = signnowResult.signatures;
+          webhookStatus.documentName = signnowResult.documentName;
+          webhookStatus.lastUpdated = signnowResult.updated;
+          
+          // If document is signed and we got a download link, update the case
+          if (signnowResult.isSigned && signnowResult.downloadLink) {
+            console.log('Document is signed, updating case with download link');
+            
+            // Update case with signed document URL and completion status
+            await Case.findByIdAndUpdate(caseId, {
+              'signnow.status': 'signed',
+              'signnow.signedDocumentUrl': signnowResult.downloadLink,
+              'signnow.completedAt': new Date()
+            });
+            
+            // Update webhook status with new data
+            webhookStatus.status = 'signed';
+            webhookStatus.signedDocumentUrl = signnowResult.downloadLink;
+            webhookStatus.completedAt = new Date();
+            webhookStatus.isCompleted = true;
+            
+          } else if (signnowResult.isSigned && !signnowResult.downloadLink) {
+            console.log('Document is signed but download link failed:', signnowResult.downloadError);
+            webhookStatus.downloadError = signnowResult.downloadError;
+          }
+          
+        } else {
+          console.log('SignNow status check failed:', signnowResult.error);
+          webhookStatus.signnowError = signnowResult.error;
+        }
+        
+      } catch (signnowError) {
+        console.error('Error checking SignNow status:', signnowError);
+        webhookStatus.signnowError = signnowError.message;
+      }
+    }
 
     res.status(200).json({
       success: true,
       data: webhookStatus
     });
   } catch (error) {
-    console.error('=== GET WEBHOOK STATUS ERROR ===');
     console.error('Error getting webhook status:', error);
-    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
       error: error.message
@@ -5127,9 +5165,31 @@ exports.getWebhookStatus = async (req, res) => {
   }
 };
 
-exports.handleSignNowWebhook = async (req, res) => {
+exports.handleSignNowZapier = async (req, res) => {
   try {
     console.log('SignNow webhook received:', req.body);
+
+    const {caseId,documentId} = req.body;
+
+    const caseData = await Case.findById(caseId);
+
+    if (!caseData) {
+      return res.status(400).json({
+        success: false,
+        error: 'Case not found'
+      });
+    }
+
+    const updatedCase = await Case.findByIdAndUpdate(caseId, {
+      'signnow.documentId': documentId,
+    });
+    updatedCase.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Case updated successfully'
+    });
+
   } catch (error) {
     console.error('Error handling SignNow webhook:', error);
     res.status(500).json({

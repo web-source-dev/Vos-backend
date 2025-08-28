@@ -62,7 +62,7 @@ const {
   createVeriffSession,
   generatePDFPackageAndSendToWebhook,
   getWebhookStatus,
-  handleSignNowWebhook,
+  handleSignNowZapier,
 } = require('../controllers/allcontrollers');
 
 // Import OBD2 controllers
@@ -188,7 +188,7 @@ router.post('/cases/:caseId/send-pdf-package', protect, generatePDFPackageAndSen
 router.get('/cases/:caseId/webhook-status', protect, getWebhookStatus);
 
 
-router.get('/signnow/webhook-listen', protect, handleSignNowWebhook);
+router.post('/signnow/zapier', handleSignNowZapier);
 
 
 router.post('/stage-time', protect, async (req, res) => {

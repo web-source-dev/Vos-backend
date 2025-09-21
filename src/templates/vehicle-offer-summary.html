@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VOS Vehicle Offer Summary</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: white;
+            color: black;
+            line-height: 1.4;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .title {
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 25px;
+            text-transform: uppercase;
+        }
+        
+        .section {
+            margin-bottom: 35px;
+        }
+        
+        .section-title {
+            font-size: 16px;
+            font-weight: bold;
+            text-decoration: none;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+        }
+        
+        .form-row {
+            display: flex;
+            margin-bottom: 15px;
+            align-items: baseline;
+        }
+        
+        .form-field {
+            display: flex;
+            align-items: baseline;
+            margin-right: 10px;
+        }
+        
+        .form-field label {
+            font-size: 14px;
+            margin-right: 4px;
+        }
+        
+        .form-field .underline {
+            border-bottom: 1px solid black;
+            min-width: 150px;
+            height: 20px;
+            display: inline-block;
+            margin-left: 4px;
+            margin-top: 2px;
+        }
+        
+        .form-field .underline.long {
+            min-width: 150px;
+        }
+        
+        .form-field .underline.short {
+            min-width: 60px;
+        }
+        
+        .vin-field {
+            margin-bottom: 15px;
+        }
+        
+        .vin-field label {
+            font-size: 14px;
+            margin-right: 4px;
+        }
+        
+        .vin-value {
+            font-size: 14px;
+            font-weight: normal;
+            margin-top: 2px;
+        }
+        
+        .terms {
+            font-size: 14px;
+            margin: 35px 0;
+            line-height: 1.4;
+        }
+        
+        .signature-section {
+            margin-top: 40px;
+        }
+        
+        .signature-row {
+            display: flex;
+            align-items: baseline;
+            margin-bottom: 20px;
+        }
+        
+        .signature-field {
+            display: flex;
+            align-items: baseline;
+            margin-right: 40px;
+        }
+        
+        .signature-field label {
+            font-size: 14px;
+            margin-right: 4px;
+        }
+        
+        .signature-line {
+            border-bottom: 1px solid black;
+            min-width: 200px;
+            height: 20px;
+            display: inline-block;
+            margin-left: 4px;
+            margin-top: 2px;
+        }
+        
+        .signature-line.short {
+            min-width: 120px;
+        }
+
+        .footer {
+            font-size: 14px;
+            margin-top: 40px;
+        }
+
+        .page-break {
+            page-break-before: always;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="title">VOS VEHICLE OFFER SUMMARY</div>
+    </div>
+
+    <!-- Customer Information Section -->
+    <div class="section">
+        <div class="section-title">Customer Information</div>
+        <div class="form-row">
+            <div class="form-field">
+                <label>First Name:</label>
+                <div class="underline long">{{customer.firstName}}</div>
+            </div>
+            <div class="form-field">
+                <label>Last Name:</label>
+                <div class="underline long">{{customer.lastName}}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vehicle Information Section -->
+    <div class="section">
+        <div class="section-title">Vehicle Information</div>
+        <div class="form-row">
+            <div class="form-field">
+                <label>Year:</label>
+                <div class="underline short">{{vehicle.year}}</div>
+            </div>
+            <div class="form-field">
+                <label>Make:</label>
+                <div class="underline short">{{vehicle.make}}</div>
+            </div>
+            <div class="form-field">
+                <label>Model:</label>
+                <div class="underline short">{{vehicle.model}}</div>
+            </div>
+        </div>
+        
+        <div class="vin-field">
+            <label>VIN:</label>
+            <span class="vin-value">{{vehicle.vin}}</span>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-field">
+                <label>Mileage:</label>
+                <div class="underline short">{{vehicle.currentMileage}}</div>
+            </div>
+            <div class="form-field">
+                <label>Color:</label>
+                <div class="underline short">{{vehicle.color}}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Offer Details Section -->
+    <div class="section">
+        <div class="section-title">Offer Details</div>
+        <div class="form-row">
+            <div class="form-field">
+                <label>Estimated Value:</label>
+                <div class="underline long">{{estimatedValue}}</div>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-field">
+                <label>Offer Amount (VOS):</label>
+                <div class="underline long">{{offerAmount}}</div>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-field">
+                <label>Offer Date:</label>
+                <div class="underline long">{{offerDate}}</div>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-field">
+                <label>Offer Expiration Date:</label>
+                <div class="underline long">{{offerExpirationDate}}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Terms and Conditions -->
+    <div class="terms">
+        This offer is valid for 48 hours from the Offer Date listed above. After expiration, the vehicle must undergo another in-person inspection to receive a new offer. All offers are contingent on verification of vehicle condition, title status, and market conditions at the time of sale.
+    </div>
+
+    <!-- Signature Section -->
+    <div class="signature-section">
+        <div class="signature-row">
+            <div class="signature-field">
+                <label>Customer Acknowledgment:</label>
+                <div class="signature-line"></div>
+            </div>
+            <div class="signature-field">
+                <label>Date:</label>
+                <div class="signature-line short"></div>
+            </div>
+        </div>
+        
+        <div class="signature-row">
+            <div class="signature-field">
+                <label>VOS Representative Signature:</label>
+                <div class="signature-line"></div>
+            </div>
+            <div class="signature-field">
+                <label>Date:</label>
+                <div class="signature-line short"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        © VIN On Spot (VOS)
+    </div>
+</body>
+</html>

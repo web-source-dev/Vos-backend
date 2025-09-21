@@ -605,36 +605,18 @@ exports.scheduleInspection = async (req, res) => {
     });
 
     // Send email to inspector
+    try {
     await emailService.sendInspectionEmail(
       inspection,
       caseData.customer,
       caseData.vehicle,
       process.env.FRONTEND_URL
     );
+  } catch (emailError) {
+    console.error('Error sending inspection email:', emailError);
+    // Don't fail the request if email fails
+  }
 
-    // Send Zapier webhook for calendar events
-    console.log('=== SCHEDULE INSPECTION - ZAPIER CALL ===');
-    console.log('About to call Zapier service for inspection scheduling');
-    console.log('Inspection data:', {
-      id: inspection._id,
-      scheduledDate: inspection.scheduledDate,
-      scheduledTime: inspection.scheduledTime,
-      inspector: inspection.inspector
-    });
-    console.log('Case data:', {
-      id: caseData._id,
-      customer: caseData.customer ? {
-        firstName: caseData.customer.firstName,
-        lastName: caseData.customer.lastName,
-        email: caseData.customer.email1
-      } : null,
-      vehicle: caseData.vehicle ? {
-        year: caseData.vehicle.year,
-        make: caseData.vehicle.make,
-        model: caseData.vehicle.model
-      } : null
-    });
-    
     try {
       const zapierResult = await zapierService.scheduleInspection(inspection, caseData, false);
       console.log('=== SCHEDULE INSPECTION - ZAPIER RESULT ===');
@@ -5022,7 +5004,6 @@ exports.generatePDFPackageAndSendToWebhook = async (req, res) => {
       pdfResult.filePath
     );
 
-    console.log('Webhook result:', webhookResult);
 
     // Clean up the temporary PDF file
     try {

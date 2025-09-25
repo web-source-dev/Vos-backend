@@ -220,6 +220,10 @@ const InspectionSchema = new mongoose.Schema({
     estimatorEventId: String,
     lastSyncAt: Date
   }
-});
+},
+{
+  timestamps: true
+}
+);
 
 module.exports = mongoose.model('Inspection', InspectionSchema); 

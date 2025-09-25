@@ -43,7 +43,11 @@ const UserSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   }
-});
+},
+{
+  timestamps: true
+}
+);
 
 // Encrypt password using bcrypt
 UserSchema.pre('save', async function(next) {

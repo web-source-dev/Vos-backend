@@ -43,6 +43,11 @@ const CustomerSchema = new mongoose.Schema({
     ref: 'User',
   },
   storeLocation: String
-});
+},
+
+{
+  timestamps: true
+}
+);
 
 module.exports = mongoose.model('Customer', CustomerSchema); 

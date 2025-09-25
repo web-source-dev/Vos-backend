@@ -263,7 +263,7 @@ exports.getCases = async (req, res) => {
       .populate('inspection')
       .populate('quote')
       .populate('transaction')
-      .sort('-createdAt');
+      .sort('-updatedAt');
 
     res.status(200).json({
       success: true,
@@ -289,7 +289,7 @@ exports.getEstimatorCases = async (req, res) => {
       .populate('inspection')
       .populate('quote')
       .populate('transaction')
-      .sort('-createdAt');
+      .sort('-updatedAt');
 
     // Filter cases where the estimator email matches
     const estimatorCases = cases.filter(caseData => {
